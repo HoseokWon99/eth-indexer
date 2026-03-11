@@ -1,0 +1,80 @@
+{
+  "indexer": {
+    "rpc_url": "https://mainnet.infura.io/v3/YOUR_PROJECT_ID",
+    "contract_addresses": [
+      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    ],
+    "event_names": [
+      "Transfer",
+      "Approval"
+    ],
+    "confirmed_after": 12,
+    "offset_block_number": 0,
+    "status_file_path": "/var/lib/eth-indexer/state/indexer-state.json",
+    "abi": [
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "name": "from",
+            "type": "address"
+          },
+          {
+            "indexed": true,
+            "name": "to",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "Transfer",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "indexed": true,
+            "name": "spender",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "Approval",
+        "type": "event"
+      }
+    ]
+  },
+  "postgres": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "eth_indexer",
+    "user": "test",
+    "password": "0000",
+    "max_connections": 20
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "password": "",
+    "db": 0
+  },
+  "api": {
+    "port": 8080,
+    "ttl": 3600
+  }
+}

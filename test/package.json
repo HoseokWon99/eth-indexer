@@ -1,0 +1,30 @@
+{
+  "name": "eth-indexer-api-tests",
+  "version": "1.0.0",
+  "description": "API tests for eth-indexer service",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:health": "jest health.test.js",
+    "test:search": "jest search.test.js",
+    "test:filters": "jest filters.test.js",
+    "test:errors": "jest errors.test.js",
+    "test:performance": "jest performance.test.js"
+  },
+  "keywords": [
+    "ethereum",
+    "indexer",
+    "api",
+    "testing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.2"
+  }
+}
