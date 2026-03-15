@@ -4,6 +4,14 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: eth-postgres
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=4"
+      - "-c"
+      - "max_wal_senders=4"
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-eth_indexer}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
@@ -91,6 +99,150 @@ services:
       - ./config.json:/etc/eth-indexer/config.json:ro
       - ./state:/var/lib/eth-indexer/state
 
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: eth-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - eth-indexer
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  kafka-connect:
+    image: debezium/connect:2.6
+    container_name: eth-kafka-connect
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: eth-indexer-connect
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    ports:
+      - "8083:8083"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - eth-indexer
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  debezium-init:
+    image: debezium/connect:2.6
+    container_name: eth-debezium-init
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-eth_indexer}
+    volumes:
+      - ./monitoring/debezium:/etc/debezium:ro
+    entrypoint: ["/bin/sh", "/etc/debezium/register-connector.sh"]
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    networks:
+      - eth-indexer
+    restart: on-failure
+
+  kafka-router:
+    build:
+      context: .
+      dockerfile: cmd/kafka-router/Dockerfile
+    container_name: eth-kafka-router
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SOURCE_TOPIC: eth-indexer.public.event_records
+      DEST_TOPIC_PREFIX: eth-indexer.events
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - eth-indexer
+    restart: unless-stopped
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: eth-kafka-exporter
+    command:
+      - --kafka.server=kafka:9092
+      - --kafka.version=3.7.0
+      - --topic.filter=eth-indexer\..*
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - eth-indexer
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: eth-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - kafka-exporter
+    networks:
+      - eth-indexer
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: eth-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/provisioning/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - eth-indexer
+    restart: unless-stopped
+
 networks:
   eth-indexer:
     driver: bridge
@@ -99,3 +251,6 @@ volumes:
   postgres-data:
   valkey-data:
   geth-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"eth-indexer/core"
+	"fmt"
 	"log"
 	"sync"
 
@@ -43,7 +44,7 @@ func NewIndexerService(
 		if !ok {
 			offset = defaultOffset
 		}
-		workers[i] = core.NewWorker(channel, scanner, eventRecordsStorage, confirmedAfter, offset)
+		workers[i] = core.NewWorker(scanner, eventRecordsStorage, confirmedAfter, offset)
 	}
 	return &IndexerService{
 		eth:          eth,
@@ -65,9 +66,6 @@ func (ix *IndexerService) Run(ctx context.Context) (err error) {
 		return err
 	}
 	eg, runCtx := errgroup.WithContext(ctx)
-	for _, w := range ix.workers {
-		eg.Go(func() error { return w.Run(runCtx) })
-	}
 	eg.Go(func() error {
 		for {
 			select {
@@ -75,12 +73,32 @@ func (ix *IndexerService) Run(ctx context.Context) (err error) {
 				return runCtx.Err()
 			case err := <-ix.sub.Err():
 				return err
+			case head, ok := <-ix.channel:
+				if !ok {
+					return fmt.Errorf("channel closed")
+				}
+				ix.indexAll(runCtx, head)
 			}
 		}
 	})
 	err = eg.Wait()
 	ix.Close()
 	return err
+}
+
+func (ix *IndexerService) indexAll(ctx context.Context, head *types.Header) {
+	blockNumber := head.Number.Uint64()
+	var wg sync.WaitGroup
+	for _, w := range ix.workers {
+		wg.Add(1)
+		go func(w *core.Worker) {
+			defer wg.Done()
+			if err := w.IndexBlocks(ctx, blockNumber); err != nil {
+				log.Printf("[IndexerService] Worker %s error: %v", w.EventName(), err)
+			}
+		}(w)
+	}
+	wg.Wait()
 }
 
 func (ix *IndexerService) SaveState() error {

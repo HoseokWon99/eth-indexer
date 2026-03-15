@@ -354,34 +354,64 @@ go test ./...
 
 ## Architecture
 
+### Indexing Pipeline
+
+```mermaid
+flowchart LR
+    ETH(["Ethereum Node\nWebSocket RPC"])
+
+    subgraph Indexer["Indexer Service"]
+        IS["IndexerService\nSubscribeNewHead"]
+        W["Worker\nper event type"]
+        SC["Scanner\nFilterLogs + ABI Decode"]
+        ST["State File\nlast block per event"]
+    end
+
+    PG[("PostgreSQL")]
+
+    ETH -- "block headers" --> IS
+    IS -- "confirmed block range" --> W
+    W -- "scan range" --> SC
+    SC -- "eth_getLogs" --> ETH
+    SC -- "decoded records" --> W
+    W -- "bulk insert" --> PG
+    IS -- "save / load" --> ST
 ```
-Ethereum RPC (WebSocket)
-    ↓
-SubscribeNewHead (real-time blocks)
-    ↓
-Worker Pool (per event type)
-    ↓
-Block Range Chunking (automatic)
-    ↓
-Log Filtering (FilterLogs)
-    ↓
-ABI Decoding
-    ↓
-PostgreSQL Bulk Insert
-    ↓
-Redis Cache
-    ↓
-Search API
+
+### Query Pipeline
+
+```mermaid
+flowchart LR
+    CLIENT(["HTTP Client"])
+
+    subgraph API["API Layer"]
+        SRV["HTTP Server\n:8080"]
+        SS["SearchService\ncache-aside"]
+    end
+
+    RD[("Redis / Valkey\nQuery Cache")]
+    PG[("PostgreSQL\nevent_records")]
+
+    CLIENT -- "GET /search/{topic}" --> SRV
+    SRV -- "filters" --> SS
+    SS -- "cache hit" --> RD
+    RD -- "cached result" --> SS
+    SS -- "cache miss" --> PG
+    PG -- "rows" --> SS
+    SS -- "write cache" --> RD
+    SS -- "response" --> SRV
+    SRV -- "JSON" --> CLIENT
 ```
 
 ### Key Components
 
-- **Indexer Service**: Manages WebSocket subscriptions and worker coordination
-- **Workers**: Per-event processors that scan blocks and extract events
-- **Scanner**: Handles log filtering and ABI decoding with automatic chunking
-- **Storage**: PostgreSQL with optimized indexes
-- **Cache**: Redis/Valkey for query result caching
-- **API Server**: RESTful API with comprehensive filtering
+- **Indexer Service**: Manages WebSocket subscription and broadcasts new block headers to all workers
+- **Workers**: Per-event goroutines; calculate confirmed block range and dispatch scan requests
+- **Scanner**: Calls `eth_getLogs` RPC, validates topic0, and ABI-decodes indexed + non-indexed fields
+- **Storage**: PostgreSQL with composite primary key `(tx_hash, log_index)` for idempotent bulk inserts
+- **Cache**: Redis/Valkey — deterministic key from `xxhash64(msgpack(filters))`, configurable TTL
+- **State**: JSON file tracking last indexed block per event; enables safe resumption after restarts
+- **API Server**: RESTful API with flexible filtering (block range, contract address, JSONB data, etc.)
 
 ## Database Schema
 

@@ -3,6 +3,7 @@
 # Build the application
 build:
 	go build -o bin/eth-indexer ./cmd/eth-indexer
+	go build -o bin/kafka-router ./cmd/kafka-router
 
 # Run the application (requires .env file)
 run:
@@ -74,6 +75,14 @@ contracts-build:
 
 contracts-test:
 	@cd test/contracts && forge test
+
+# Start monitoring stack (Kafka, Debezium, Prometheus, Grafana)
+monitoring-up:
+	docker-compose up -d kafka kafka-connect debezium-init kafka-router kafka-exporter prometheus grafana
+
+# Stop monitoring stack
+monitoring-down:
+	docker-compose stop kafka kafka-connect debezium-init kafka-router kafka-exporter prometheus grafana
 
 # Show help
 help:
