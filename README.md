@@ -57,7 +57,7 @@ Services started:
 
 4. **Monitor indexing progress:**
 ```bash
-./scripts/monitor.sh
+./.scripts/monitor.sh
 ```
 
 5. **Query events:**
@@ -289,7 +289,7 @@ curl --get "http://localhost:8080/search/Transfer" \
 
 ### Monitor Indexing Progress
 ```bash
-./scripts/monitor.sh
+./.scripts/monitor.sh
 ```
 
 Real-time monitoring showing:
@@ -300,16 +300,16 @@ Real-time monitoring showing:
 ### Connect to PostgreSQL
 ```bash
 # Interactive session
-./scripts/psql.sh
+./.scripts/psql.sh
 
 # Execute query
-./scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
+./.scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
 
 # List tables
-./scripts/psql.sh -c "\dt"
+./.scripts/psql.sh -c "\dt"
 
 # Show recent events
-./scripts/psql.sh -c "SELECT * FROM event_records ORDER BY timestamp DESC LIMIT 10;"
+./.scripts/psql.sh -c "SELECT * FROM event_records ORDER BY timestamp DESC LIMIT 10;"
 ```
 
 ## Testing
@@ -525,19 +525,19 @@ curl http://localhost:8080/status
 ```
 3. Query database directly:
 ```bash
-./scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
+./.scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
 ```
 
 ### Performance Issues
 
 1. Check database indexes:
 ```bash
-./scripts/psql.sh -c "\di"
+./.scripts/psql.sh -c "\di"
 ```
 
 2. Monitor query performance:
 ```bash
-./scripts/psql.sh -c "SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
+./.scripts/psql.sh -c "SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
 ```
 
 3. Verify Redis is running:

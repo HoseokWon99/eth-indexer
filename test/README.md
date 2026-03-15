@@ -1,6 +1,6 @@
-# eth-indexer API Tests
+# eth-indexer Tests
 
-Comprehensive JavaScript test suite for the eth-indexer API using Jest.
+Comprehensive test suite for eth-indexer including E2E tests with live service and integration tests with Anvil local blockchain.
 
 ## Setup
 
@@ -11,31 +11,47 @@ cd test
 npm install
 ```
 
-## Running Tests
+## Test Types
 
-### Run All Tests
+### 1. Integration Tests (Anvil)
+
+Full-stack tests with local Ethereum blockchain (Anvil), deterministic test data, and isolated environment.
 
 ```bash
-npm test
+# Run full E2E test cycle (setup -> test -> teardown)
+make test-e2e
+
+# Or run steps manually:
+make test-env-up        # Start Anvil + deploy contracts + start indexer
+npm run test:integration # Run integration tests
+make test-env-down      # Stop environment
+
+# Clean up everything
+make test-env-clean
 ```
 
-### Run Specific Test Suites
+**What it tests:**
+- Contract deployment and event indexing
+- All 140+ test events indexed correctly
+- Search and filter functionality
+- Pagination (limit, search_after)
+- Error handling
+- Deterministic, reproducible results
+
+### 2. E2E Tests (Live Service)
+
+Tests against running eth-indexer service (requires external setup).
 
 ```bash
-# Health and status tests
-npm run test:health
+# Run E2E tests
+npm test
 
-# Search endpoint tests
-npm run test:search
-
-# Filter tests
-npm run test:filters
-
-# Error handling tests
-npm run test:errors
-
-# Performance tests
-npm run test:performance
+# Run specific test suites
+npm run test:health      # Health and status tests
+npm run test:search      # Search endpoint tests
+npm run test:filters     # Filter parameter tests
+npm run test:errors      # Error handling tests
+npm run test:performance # Performance tests
 ```
 
 ### Run Tests in Watch Mode
@@ -54,19 +70,84 @@ npm run test:coverage
 
 ```
 test/
+├── contracts/            # Solidity test contracts (see contracts/README.md)
+│   ├── src/              # TestToken.sol
+│   ├── script/           # Deploy and event generation scripts
+│   └── foundry.toml      # Foundry configuration
+├── e2e/                  # E2E tests for live service
+│   ├── setup.js          # Test utilities
+│   ├── health.test.js    # Health and status tests
+│   ├── search.test.js    # Search endpoint tests
+│   ├── filters.test.js   # Filter parameter tests
+│   ├── errors.test.js    # Error handling tests
+│   └── performance.test.js # Performance tests
+├── integration/          # Integration tests with Anvil
+│   ├── setup.js          # Anvil utilities (RPC, sync helpers)
+│   └── e2e.test.js       # Full integration test suite
 ├── package.json          # Dependencies and scripts
-├── jest.config.js        # Jest configuration
-├── setup.js              # Global test setup and utilities
-├── health.test.js        # Health and status endpoint tests
-├── search.test.js        # Search endpoint tests
-├── filters.test.js       # Filter parameter tests
-├── errors.test.js        # Error handling tests
-└── performance.test.js   # Performance and load tests
+└── jest.config.js        # Jest configuration
 ```
 
-## Test Suites
+## Integration Test Environment (Anvil)
 
-### 1. Health Tests (`health.test.js`)
+The integration test environment provides:
+
+- **Deterministic blockchain**: Same state on every run
+- **Fast feedback**: Local node, no network latency
+- **Isolated**: No conflicts with production data
+- **Complete control**: Generate specific test scenarios
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Docker Compose Test Environment                     │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  Anvil (port 8545)        Postgres (port 5434)     │
+│    ↓                           ↓                    │
+│  Deploy Contracts →        Valkey (port 6380)       │
+│  Generate Events               ↓                    │
+│    ↓                           ↓                    │
+│  eth-indexer (port 8081)  ←────┘                   │
+│    ↓                                                │
+│  Jest Integration Tests                             │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Test Data
+
+- **Token1 (TUSDC)**: 50 Transfers + 30 Approvals = 80 events
+- **Token2 (TUSDT)**: 40 Transfers + 20 Approvals = 60 events
+- **Total**: 140 events + 2 constructor events = 142 events
+
+Deterministic addresses:
+- Deployer: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- Alice: `0x1111111111111111111111111111111111111111`
+- Bob: `0x2222222222222222222222222222222222222222`
+- Charlie: `0x3333333333333333333333333333333333333333`
+
+### Verification
+
+```bash
+# Check Anvil is running
+cast client --rpc-url http://localhost:8545
+
+# Check indexer health
+curl http://localhost:8081/health
+
+# Query indexed events
+curl http://localhost:8081/search/Transfer | jq '.total'
+# Should return 92+ (90 regular + 2 constructor)
+
+curl http://localhost:8081/search/Approval | jq '.total'
+# Should return 50
+```
+
+## E2E Test Suites
+
+### 1. Health Tests (`e2e/health.test.js`)
 
 Tests for health and status endpoints:
 - Health endpoint returns 200 OK
@@ -74,7 +155,7 @@ Tests for health and status endpoints:
 - Block numbers are numeric and non-negative
 - Block numbers update over time
 
-### 2. Search Tests (`search.test.js`)
+### 2. Search Tests (`e2e/search.test.js`)
 
 Tests for search endpoints:
 - Response format (count + result)
@@ -84,7 +165,7 @@ Tests for search endpoints:
 - Transaction and block hash validation
 - Timestamp format validation
 
-### 3. Filter Tests (`filters.test.js`)
+### 3. Filter Tests (`e2e/filters.test.js`)
 
 Tests for all filter types:
 - **Contract Address**: Single and multiple addresses
@@ -94,7 +175,7 @@ Tests for all filter types:
 - **Log Index**: Single and multiple values
 - **Combined Filters**: Multiple filters together
 
-### 4. Error Tests (`errors.test.js`)
+### 4. Error Tests (`e2e/errors.test.js`)
 
 Tests for error handling:
 - Invalid topics (404)
@@ -103,7 +184,7 @@ Tests for error handling:
 - HTTP method validation (405 for POST/PUT/DELETE)
 - Edge cases (large values, empty params, case sensitivity)
 
-### 5. Performance Tests (`performance.test.js`)
+### 5. Performance Tests (`e2e/performance.test.js`)
 
 Tests for performance:
 - Response time benchmarks
@@ -151,8 +232,27 @@ After running `npm run test:coverage`, view the report:
 open coverage/lcov-report/index.html
 ```
 
+## Integration Test Suites
+
+### Event Indexing Tests (`integration/e2e.test.js`)
+
+Tests for Anvil-based integration:
+- All 140+ events indexed
+- Event structure validation
+- Contract address filtering
+- Deterministic event data
+- Pagination (limit, search_after)
+- Error handling
+
 ## Prerequisites
 
+### For Integration Tests (Anvil)
+- Docker and Docker Compose
+- Foundry (forge, cast, anvil)
+- Node.js 16+
+- Make
+
+### For E2E Tests (Live Service)
 - Node.js 16+ recommended
 - eth-indexer service running on http://localhost:8080
 - Service should have some indexed events for full test coverage

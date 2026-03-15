@@ -46,4 +46,14 @@ config.json
 config.*.json
 !config.example.json
 
+# Test artifacts
+deployed-addresses.json
+test-state/
+test/contracts/out/
+test/contracts/cache/
+test/contracts/broadcast/
+test/contracts/lib/forge-std/
+test/node_modules/
+test/coverage/
+
 

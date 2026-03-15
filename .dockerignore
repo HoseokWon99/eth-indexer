@@ -31,3 +31,9 @@ go.work.sum
 config.json
 config.example.json
 
+# monitoring scripts
+.scripts
+
+# documentations
+.docs
+

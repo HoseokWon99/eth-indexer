@@ -14,7 +14,7 @@ This service indexes specific Ethereum smart contract events and stores them in 
 - Filters logs by contract + event (topic0)
 - Decodes ABI-encoded data
 - Normalizes values for storage
-- Bulk inserts documents into OpenSearch
+- Bulk inserts records into Postgres
 - Exposes search API
 
 ## Key Design Principles

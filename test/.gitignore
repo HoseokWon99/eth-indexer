@@ -1,4 +1,13 @@
+# Node
 node_modules/
+npm-debug.log*
+
+# Contract artifacts
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Test outputs
 coverage/
 *.log
-.DS_Store

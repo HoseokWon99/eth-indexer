@@ -10,7 +10,9 @@
     "test:search": "jest search.test.js",
     "test:filters": "jest filters.test.js",
     "test:errors": "jest errors.test.js",
-    "test:performance": "jest performance.test.js"
+    "test:performance": "jest performance.test.js",
+    "test:integration": "jest integration",
+    "test:integration:full": "jest integration/e2e.test.js"
   },
   "keywords": [
     "ethereum",
