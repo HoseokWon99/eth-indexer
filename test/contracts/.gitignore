@@ -3,10 +3,10 @@ node_modules/
 npm-debug.log*
 
 # Contract artifacts
-contracts/out/
-contracts/cache/
-contracts/broadcast/
-contracts/lib/
+out/
+cache/
+broadcast/
+lib/
 
 # Test outputs
 coverage/
