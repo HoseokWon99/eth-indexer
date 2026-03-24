@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: indexer-config
+  namespace: eth-indexer
+data:
+  # Comma-separated list of contract addresses to index.
+  INDEXER_CONTRACT_ADDRESSES: "${INDEXER_CONTRACT_ADDRESSES}"
+  # Comma-separated list of event names to index (must match names in the ABI).
+  INDEXER_EVENT_NAMES: "Transfer,Approval"
+  # Number of block confirmations required before indexing a block.
+  INDEXER_CONFIRMED_AFTER: "${INDEXER_CONFIRMED_AFTER}"
+  # Block number to start indexing from when no prior state exists.
+  INDEXER_OFFSET_BLOCK_NUMBER: "0"
+  # Path to the JSON file used to persist per-event last-indexed block numbers.
+  INDEXER_STATUS_FILE_PATH: "/var/lib/eth-indexer/state/indexer-state.json"
+  # Path to the ABI JSON file mounted into the container.
+  INDEXER_ABI_PATH: "/etc/eth-indexer/abi.json"
+  # ABI JSON — mounted as a file at ABI_PATH via the abi-config volume below.
+  abi.json: |
+    [
+      {
+        "anonymous": false,
+        "inputs": [
+          {"indexed": true,  "name": "from",    "type": "address"},
+          {"indexed": true,  "name": "to",      "type": "address"},
+          {"indexed": false, "name": "value",   "type": "uint256"}
+        ],
+        "name": "Transfer",
+        "type": "event"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {"indexed": true,  "name": "owner",   "type": "address"},
+          {"indexed": true,  "name": "spender", "type": "address"},
+          {"indexed": false, "name": "value",   "type": "uint256"}
+        ],
+        "name": "Approval",
+        "type": "event"
+      }
+    ]

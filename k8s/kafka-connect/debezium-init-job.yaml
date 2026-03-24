@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: debezium-init
+  namespace: eth-indexer
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-connect
+          image: busybox
+          command: ["sh", "-c", "until wget -qO- http://kafka-connect:8083/connectors; do echo waiting for kafka-connect; sleep 5; done"]
+      containers:
+        - name: debezium-init
+          image: debezium/connect:2.6
+          command: ["/etc/debezium/register-connector.sh"]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: debezium-config
+              mountPath: /etc/debezium
+      volumes:
+        - name: debezium-config
+          configMap:
+            name: debezium-config
+            defaultMode: 0755

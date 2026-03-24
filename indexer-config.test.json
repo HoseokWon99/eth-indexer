@@ -1,0 +1,60 @@
+{
+  "rpc_url": "ws://eth-rpc:8545",
+  "contract_addresses": [
+    "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+    "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+  ],
+  "event_names": [
+    "Transfer",
+    "Approval"
+  ],
+  "confirmed_after": 1,
+  "offset_block_number": 0,
+  "status_file_path": "/var/lib/eth-indexer/state/indexer-state.json",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "name": "value",
+          "type": "uint256"
+        }
+      ],
+      "name": "Transfer",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "name": "spender",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "name": "value",
+          "type": "uint256"
+        }
+      ],
+      "name": "Approval",
+      "type": "event"
+    }
+  ]
+}

@@ -72,19 +72,33 @@ services:
       - eth-indexer
     restart: unless-stopped
   indexer:
-    build: .
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
     container_name: eth-indexer
     env_file:
       - .env
     environment:
       - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/config.json}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-eth_indexer}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - VALKEY_HOST=valkey
-      - VALKEY_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eth-indexer
+    restart: unless-stopped
+    volumes:
+      - ./config.indexer.json:/etc/eth-indexer/config.json:ro
+      - ./state:/var/lib/eth-indexer/state
+
+  api-server:
+    build:
+      context: .
+      dockerfile: services/api-server/Dockerfile
+    container_name: eth-api-server
+    env_file:
+      - .env
+    environment:
+      - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/config.json}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -96,8 +110,7 @@ services:
       - eth-indexer
     restart: unless-stopped
     volumes:
-      - ./config.json:/etc/eth-indexer/config.json:ro
-      - ./state:/var/lib/eth-indexer/state
+      - ./config.api-server.json:/etc/eth-indexer/config.json:ro
 
   kafka:
     image: apache/kafka:3.7.0
@@ -175,7 +188,7 @@ services:
   kafka-router:
     build:
       context: .
-      dockerfile: cmd/kafka-router/Dockerfile
+      dockerfile: services/kafka-router/Dockerfile
     container_name: eth-kafka-router
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092

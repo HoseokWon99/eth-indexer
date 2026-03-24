@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eth-indexer-postgres-test
+    environment:
+      POSTGRES_DB: eth_indexer_test
+      POSTGRES_USER: indexer
+      POSTGRES_PASSWORD: indexer_password
+    ports:
+      - "5432:5432"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U indexer -d eth_indexer_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_replication_slots=5
+        -c max_wal_senders=5
+    # No volumes - fresh state on each run
+
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: eth-indexer-valkey-test
+    ports:
+      - "6379:6379"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # No persistence - fresh state on each run
+
+networks:
+  eth-indexer-test:
+    name: eth-indexer-test
+    external: true

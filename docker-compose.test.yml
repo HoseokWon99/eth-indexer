@@ -1,15 +1,12 @@
-version: '3.8'
-
 services:
   # Anvil - Local Ethereum node
   anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
+    build:
+      context: .
+      dockerfile: test/anvil/Dockerfile
     container_name: eth-indexer-anvil
-    command: >
-      anvil
-      --host=0.0.0.0
-      --block-time=1
-      --mnemonic="test test test test test test test test test test test junk"
+    environment:
+      FORK_URL: ${FORK_URL}
     ports:
       - "8545:8545"
     networks:
@@ -77,20 +74,50 @@ services:
   indexer:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: services/indexer/Dockerfile
     container_name: eth-indexer-test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      contract-deployer:
+        condition: service_completed_successfully
+    environment:
+      INDEXER_CONFIG_PATH: /etc/eth-indexer/indexer-config.json
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: eth_indexer_test
+      POSTGRES_USER: indexer
+      POSTGRES_PASSWORD: indexer_password
+    volumes:
+      - ./config/config.test.json:/etc/eth-indexer/indexer-config.json:ro
+      - ./test-state:/var/lib/eth-indexer/test-state
+    networks:
+      - eth-indexer-test
+
+  # API Server - Service under test
+  api-server:
+    build:
+      context: .
+      dockerfile: services/api-server/Dockerfile
+    container_name: eth-api-server-test
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
         condition: service_healthy
-      contract-deployer:
-        condition: service_completed_successfully
+    environment:
+      API_PORT: 8081
+      API_TTL: 300
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: eth_indexer_test
+      POSTGRES_USER: indexer
+      POSTGRES_PASSWORD: indexer_password
+      REDIS_HOST: valkey
+      REDIS_PORT: 6379
+      TOPICS: Transfer,Approval
     ports:
       - "8081:8081"
-    volumes:
-      - ./config/config.test.json:/etc/eth-indexer/config.json:ro
-      - ./test-state:/var/lib/eth-indexer/test-state
     networks:
       - eth-indexer-test
     healthcheck:

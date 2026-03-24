@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "../src/TestToken.sol";
 
 contract TestTokenTest is Test {
@@ -62,10 +63,8 @@ contract TestTokenTest is Test {
     function test_TransferFrom() public {
         uint256 amount = 1000 * 10**18;
 
-        // Approve alice to spend tokens
         token.approve(alice, amount);
 
-        // Transfer from this contract to bob via alice
         vm.prank(alice);
         bool success = token.transferFrom(address(this), bob, amount);
 
@@ -75,13 +74,27 @@ contract TestTokenTest is Test {
     }
 
     function test_RevertWhen_TransferInsufficientBalance() public {
-        vm.expectRevert("Insufficient balance");
-        token.transfer(alice, 2_000_000 * 10**18); // More than supply
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientBalance.selector,
+                address(this),
+                1_000_000 * 10**18,
+                2_000_000 * 10**18
+            )
+        );
+        token.transfer(alice, 2_000_000 * 10**18);
     }
 
     function test_RevertWhen_TransferFromInsufficientAllowance() public {
-        vm.expectRevert("Insufficient allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientAllowance.selector,
+                alice,
+                0,
+                1000 * 10**18
+            )
+        );
         vm.prank(alice);
-        token.transferFrom(address(this), bob, 1000 * 10**18); // No allowance
+        token.transferFrom(address(this), bob, 1000 * 10**18);
     }
 }

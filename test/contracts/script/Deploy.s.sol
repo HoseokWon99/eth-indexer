@@ -14,11 +14,11 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy Token1 (simulating USDC)
-        TestToken token1 = new TestToken("Test USDC", "TUSDC", 1_000_000 * 10**18);
+        TestToken token1 = new TestToken("Test USDC", "TUSDC", type(uint256).max);
         console.log("Token1 (TUSDC) deployed at:", address(token1));
 
         // Deploy Token2 (simulating USDT)
-        TestToken token2 = new TestToken("Test USDT", "TUSDT", 1_000_000 * 10**18);
+        TestToken token2 = new TestToken("Test USDT", "TUSDT", type(uint256).max);
         console.log("Token2 (TUSDT) deployed at:", address(token2));
 
         vm.stopBroadcast();

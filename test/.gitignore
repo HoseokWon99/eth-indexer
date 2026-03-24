@@ -11,3 +11,4 @@ contracts/lib/
 # Test outputs
 coverage/
 *.log
+/contracts/foundry.lock

@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: eth-indexer
+spec:
+  type: ExternalName
+  externalName: ${POSTGRES_HOST}
+  ports:
+    - port: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: eth-indexer
+spec:
+  type: ExternalName
+  externalName: ${REDIS_HOST}
+  ports:
+    - port: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: eth-indexer
+spec:
+  type: ExternalName
+  externalName: ${KAFKA_HOST}
+  ports:
+    - port: 9092
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eth-rpc
+  namespace: eth-indexer
+spec:
+  type: ExternalName
+  externalName: ${RPC_HOST}
+  ports:
+    - port: 8545

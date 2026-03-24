@@ -19,13 +19,13 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Go workspace file
-go.work
-go.work.sum
-
 # env file
 .env
 .env.example
+
+# Go workspace
+go.work
+go.work.sum
 
 #config file
 config.json

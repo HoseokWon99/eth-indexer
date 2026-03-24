@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexer
+  namespace: eth-indexer
+spec:
+  # Single replica — indexer maintains block state and must not run concurrently
+  replicas: 1
+  selector:
+    matchLabels:
+      app: indexer
+  template:
+    metadata:
+      labels:
+        app: indexer
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox
+          command: ["sh", "-c", "until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done"]
+      containers:
+        - name: indexer
+          image: eth-indexer:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: indexer-config
+          env:
+            - name: ETHEREUM_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rpc-credentials
+                  key: RPC_URL
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: abi
+              mountPath: /etc/eth-indexer
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/eth-indexer/state
+      volumes:
+        - name: abi
+          configMap:
+            name: indexer-config
+            items:
+              - key: abi.json
+                path: abi.json
+        - name: state
+          persistentVolumeClaim:
+            claimName: indexer-state
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: indexer
+  namespace: eth-indexer
+spec:
+  selector:
+    app: indexer
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: indexer-state
+  namespace: eth-indexer
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

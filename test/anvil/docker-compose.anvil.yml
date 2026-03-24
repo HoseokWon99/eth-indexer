@@ -1,0 +1,29 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: eth-indexer-anvil
+    ports:
+      - "8545:8545"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "cast", "client", "--rpc-url", "http://localhost:8545"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    entrypoint:
+      - anvil
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --block-time
+      - "1"
+      - --mnemonic
+      - "test test test test test test test test test test test junk"
+
+networks:
+  eth-indexer-test:
+    name: eth-indexer-test
+    external: true

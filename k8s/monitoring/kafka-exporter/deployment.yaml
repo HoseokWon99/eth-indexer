@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-exporter
+  namespace: eth-indexer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-exporter
+  template:
+    metadata:
+      labels:
+        app: kafka-exporter
+    spec:
+      initContainers:
+        - name: wait-for-kafka
+          image: busybox
+          command: ["sh", "-c", "until nc -z kafka 9092; do echo waiting for kafka; sleep 2; done"]
+      containers:
+        - name: kafka-exporter
+          image: danielqsj/kafka-exporter:latest
+          args:
+            - --kafka.server=kafka:9092
+          ports:
+            - containerPort: 9308
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9308
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-exporter
+  namespace: eth-indexer
+spec:
+  selector:
+    app: kafka-exporter
+  ports:
+    - port: 9308
+      targetPort: 9308
