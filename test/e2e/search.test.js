@@ -8,6 +8,7 @@ let dbApprovalRows;
 beforeAll(async () => {
   const client = new Client(DB_CONFIG);
   await client.connect();
+
   try {
     const t = await client.query("SELECT * FROM event_records WHERE event_name = 'Transfer' ORDER BY block_number, log_index LIMIT 10");
     dbTransferRows = t.rows;
