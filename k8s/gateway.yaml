@@ -51,7 +51,13 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /grafana
+            value: /dashboard
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
-        - name: grafana
-          port: 3000
+        - name: dashboard
+          port: 80
