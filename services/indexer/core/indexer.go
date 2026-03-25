@@ -63,7 +63,9 @@ func (ix *Indexer) Run(ctx context.Context) (err error) {
 				if !ok {
 					return fmt.Errorf("channel closed")
 				}
-				ix.indexAll(runCtx, head.Number.Uint64())
+				blockNumber := head.Number.Uint64()
+				log.Printf("[Indexer] New block: %d", blockNumber)
+				ix.indexAll(runCtx, blockNumber)
 			}
 		}
 	})

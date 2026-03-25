@@ -86,13 +86,13 @@ docker run --rm -p 8545:8545 -e FORK_URL="" eth-indexer-anvil
 # Set FORK_URL or leave unset to use the default
 export FORK_URL=https://eth.llamarpc.com
 
-docker compose -f docker-compose.test.yml up anvil
+docker compose -f docker-compose.local.yml up anvil
 ```
 
 The full test stack starts Anvil, Postgres, Valkey, the contract deployer, the indexer, and the API server in dependency order:
 
 ```bash
-docker compose -f docker-compose.test.yml up --build
+docker compose -f docker-compose.local.yml up --build
 ```
 
 ### Via Make
