@@ -1,7 +1,7 @@
 FORK_URL ?= https://eth.llamarpc.com
 
 .PHONY: anvil-fork \
-	build build-indexer build-api-server build-kafka-router build-all \
+	build build-indexer build-api-server build-dashboard build-all \
 	run-indexer run-api-server \
 	test test-unit test-integration test-e2e test-all \
 	docker-build docker-up docker-down clean \
@@ -17,10 +17,10 @@ build-indexer:
 build-api-server:
 	cd services/api-server && go build -o ../../bin/api-server .
 
-build-kafka-router:
-	cd services/kafka-router && go build -o ../../bin/kafka-router .
+build-dashboard:
+	cd services/dashboard && go build -o ../../bin/dashboard .
 
-build-all: build-indexer build-api-server build-kafka-router
+build-all: build-indexer build-api-server build-dashboard
 
 # Alias for backwards compatibility
 build: build-all
@@ -37,7 +37,7 @@ tidy-all:
 	cd libs/common && go mod tidy
 	cd services/indexer && go mod tidy
 	cd services/api-server && go mod tidy
-	cd services/kafka-router && go mod tidy
+	cd services/dashboard && go mod tidy
 
 # Run Go unit tests
 test:
@@ -50,7 +50,7 @@ test-unit:
 docker-build:
 	docker build -f services/indexer/Dockerfile -t eth-indexer:latest .
 	docker build -f services/api-server/Dockerfile -t eth-api-server:latest .
-	docker build -f services/kafka-router/Dockerfile -t eth-kafka-router:latest .
+	docker build -f services/dashboard/Dockerfile -t eth-dashboard:latest .
 
 # Start docker-compose services
 docker-up:
@@ -74,7 +74,7 @@ fmt:
 	cd libs/common && go fmt ./...
 	cd services/indexer && go fmt ./...
 	cd services/api-server && go fmt ./...
-	cd services/kafka-router && go fmt ./...
+	cd services/dashboard && go fmt ./...
 
 # Run linter
 lint:
@@ -103,7 +103,7 @@ test-env-clean:
 
 # Testing targets
 test-integration:
-	@cd test && npm test
+	@docker-compose -f docker-compose.test.yml run --rm test-runner
 
 test-e2e: test-env-clean test-env-up test-integration test-env-down
 
@@ -123,11 +123,11 @@ contracts-test:
 
 # Start monitoring stack (Kafka, Debezium, Prometheus, Grafana)
 monitoring-up:
-	docker-compose up -d kafka kafka-connect debezium-init kafka-router kafka-exporter prometheus grafana
+	docker-compose up -d kafka kafka-connect debezium-init dashboard kafka-exporter prometheus grafana
 
 # Stop monitoring stack
 monitoring-down:
-	docker-compose stop kafka kafka-connect debezium-init kafka-router kafka-exporter prometheus grafana
+	docker-compose stop kafka kafka-connect debezium-init dashboard kafka-exporter prometheus grafana
 
 # Minikube cluster
 cluster-up:
@@ -147,7 +147,7 @@ help:
 	@echo "Available targets:"
 	@echo "  build-indexer     - Build indexer binary"
 	@echo "  build-api-server  - Build api-server binary"
-	@echo "  build-kafka-router- Build kafka-router binary"
+	@echo "  build-dashboard   - Build dashboard binary"
 	@echo "  build-all         - Build all service binaries"
 	@echo "  run-indexer       - Run indexer service"
 	@echo "  run-api-server    - Run api-server service"

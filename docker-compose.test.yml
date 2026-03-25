@@ -4,9 +4,7 @@ services:
     build:
       context: .
       dockerfile: test/anvil/Dockerfile
-    container_name: eth-indexer-anvil
-    environment:
-      FORK_URL: ${FORK_URL}
+    container_name: eth-indexer-test-anvil
     ports:
       - "8545:8545"
     networks:
@@ -16,15 +14,14 @@ services:
       interval: 2s
       timeout: 5s
       retries: 10
-
   # Postgres - Test database
   postgres:
     image: postgres:16-alpine
-    container_name: eth-indexer-postgres-test
+    container_name: eth-indexer-test-postgres
     environment:
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5434:5432"
     networks:
@@ -39,7 +36,7 @@ services:
   # Valkey - Test cache
   valkey:
     image: valkey/valkey:7-alpine
-    container_name: eth-indexer-valkey-test
+    container_name: eth-indexer-test-valkey
     ports:
       - "6380:6379"
     networks:
@@ -75,49 +72,61 @@ services:
     build:
       context: .
       dockerfile: services/indexer/Dockerfile
-    container_name: eth-indexer-test
+    container_name: eth-indexer-test-indexer
     depends_on:
       postgres:
         condition: service_healthy
       contract-deployer:
         condition: service_completed_successfully
     environment:
-      INDEXER_CONFIG_PATH: /etc/eth-indexer/indexer-config.json
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL}
+      INDEXER_CONTRACT_ADDRESSES: ${INDEXER_CONTRACT_ADDRESSES}
+      INDEXER_ABI_PATH: ${INDEXER_ABI_PATH}
+      INDEXER_EVENT_NAMES: ${INDEXER_EVENT_NAMES}
+      INDEXER_CONFIRMED_AFTER: ${INDEXER_CONFIRMED_AFTER}
+      INDEXER_OFFSET_BLOCK_NUMBER: ${INDEXER_OFFSET_BLOCK_NUMBER}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ./config/config.test.json:/etc/eth-indexer/indexer-config.json:ro
       - ./test-state:/var/lib/eth-indexer/test-state
+    ports:
+      - "8081:8080"
     networks:
       - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   # API Server - Service under test
   api-server:
     build:
       context: .
       dockerfile: services/api-server/Dockerfile
-    container_name: eth-api-server-test
+    container_name: eth-indexer-test-api-server
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
         condition: service_healthy
     environment:
-      API_PORT: 8081
-      API_TTL: 300
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
-      REDIS_HOST: valkey
-      REDIS_PORT: 6379
-      TOPICS: Transfer,Approval
+      API_PORT: ${API_PORT}
+      API_TTL: ${API_TTL}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      TOPICS: ${TOPICS}
     ports:
-      - "8081:8081"
+      - "8082:8081"
     networks:
       - eth-indexer-test
     healthcheck:
@@ -125,6 +134,31 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Test Runner - Jest E2E tests
+  test-runner:
+    image: node:20-alpine
+    container_name: eth-indexer-test-runner
+    depends_on:
+      indexer:
+        condition: service_healthy
+      api-server:
+        condition: service_healthy
+    environment:
+      API_BASE_URL: http://api-server:8081
+      INDEXER_BASE_URL: http://indexer:8080
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./test:/app
+    working_dir: /app
+    command: sh -c "npm install && npm test"
+    networks:
+      - eth-indexer-test
+    restart: "no"
 
 networks:
   eth-indexer-test:

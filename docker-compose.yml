@@ -185,11 +185,11 @@ services:
       - eth-indexer
     restart: on-failure
 
-  kafka-router:
+  dashboard:
     build:
       context: .
-      dockerfile: services/kafka-router/Dockerfile
-    container_name: eth-kafka-router
+      dockerfile: services/dashboard/Dockerfile
+    container_name: eth-dashboard
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SOURCE_TOPIC: eth-indexer.public.event_records

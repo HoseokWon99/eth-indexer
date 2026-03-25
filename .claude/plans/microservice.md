@@ -5,12 +5,12 @@ Restructure `eth-indexer` into a Go workspace monorepo using `go.work`, splittin
 
 - **indexer**: headless Ethereum event indexer (RPC → PostgreSQL)
 - **api-server**: stateless HTTP search API (PostgreSQL + Redis → HTTP)
-- **kafka-router**: CDC event router (Kafka topic fan-out)
+- **dashboard**: CDC event router (Kafka topic fan-out)
 
 ```
 Client <-> api-server (N) <-> PostgreSQL/Redis <-> indexer
                                     |
-                              kafka-router <-> Kafka
+                              dashboard <-> Kafka
 ```
 
 ## Interface Split: EventRecordsStorage
@@ -79,10 +79,10 @@ eth-indexer/
 │   │   ├── schema.go                # request/response types (from api/schema.go)
 │   │   └── Dockerfile
 │   │
-│   └── kafka-router/                # module: eth-indexer/services/kafka-router
+│   └── dashboard/                # module: eth-indexer/services/dashboard
 │       ├── go.mod                   # standalone (only kafka-go + stdlib)
 │       ├── go.sum
-│       ├── main.go                  # existing kafka-router logic
+│       ├── main.go                  # existing dashboard logic
 │       └── Dockerfile
 │
 ├── migrations/                      # shared SQL migrations
@@ -117,7 +117,7 @@ eth-indexer/
 - HTTP handlers, server, schema (from `api/`)
 - Deps: pgx, squirrel, go-redis, xxhash, msgpack
 
-### `services/kafka-router` — standalone
+### `services/dashboard` — standalone
 - No shared deps, no common module required
 
 ## Steps
@@ -152,9 +152,9 @@ eth-indexer/
 - `services/api-server/config.go` — search-specific config (API port, TTL, postgres, redis, topics)
 - `services/api-server/main.go` — only PG, Redis, SearchService, HTTP server
 
-### Step 4: Create `services/kafka-router` module
-- Create `services/kafka-router/go.mod` (standalone, no common dep)
-- Move `cmd/kafka-router/main.go` → `services/kafka-router/main.go`
+### Step 4: Create `services/dashboard` module
+- Create `services/dashboard/go.mod` (standalone, no common dep)
+- Move `cmd/dashboard/main.go` → `services/dashboard/main.go`
 
 ### Step 5: Create root `go.work`
 ```go
@@ -164,7 +164,7 @@ use (
     ./libs/common
     ./services/indexer
     ./services/api-server
-    ./services/kafka-router
+    ./services/dashboard
 )
 ```
 
@@ -181,12 +181,12 @@ use (
 ### Step 8: Update `docker-compose.yml`
 - Add `api-server` service (depends on postgres, valkey)
 - Update `indexer` service build context + dockerfile path
-- Update `kafka-router` service build context + dockerfile path
+- Update `dashboard` service build context + dockerfile path
 - Remove port mapping from `indexer` (headless)
 - Expose port on `api-server` only
 
 ### Step 9: Update `Makefile`
-- Per-service build targets: `build-indexer`, `build-api-server`, `build-kafka-router`
+- Per-service build targets: `build-indexer`, `build-api-server`, `build-dashboard`
 - Per-service run targets: `run-indexer`, `run-api-server`
 - `build-all` / `test-all` / `tidy-all` aggregate targets
 
@@ -211,7 +211,7 @@ use (
 | `api/server.go` | `services/api-server/server.go` |
 | `api/schema.go` | `services/api-server/schema.go` |
 | `cmd/eth-indexer/main.go` | `services/indexer/main.go` |
-| `cmd/kafka-router/main.go` | `services/kafka-router/main.go` |
+| `cmd/dashboard/main.go` | `services/dashboard/main.go` |
 | `config/config.go` | split into `services/indexer/config.go` + `services/api-server/config.go` |
 | `go.mod` | removed (replaced by per-module go.mod + go.work) |
 
@@ -223,7 +223,7 @@ libs/common (zero external deps)
   ├── services/indexer (go-ethereum, pgx)
   └── services/api-server (pgx, squirrel, go-redis, xxhash, msgpack)
 
-services/kafka-router (kafka-go) — standalone, no shared dep
+services/dashboard (kafka-go) — standalone, no shared dep
 ```
 
 ## Key Decisions

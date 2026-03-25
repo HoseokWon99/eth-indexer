@@ -113,16 +113,14 @@ cat > "${PROJECT_ROOT}/config/config.test.json" <<EOF
 }
 EOF
 
-echo "5. Starting indexer service..."
-docker-compose -f "${PROJECT_ROOT}/docker-compose.test.yml" up -d indexer
-
-echo "6. Waiting for indexer to sync..."
-sleep 10
+echo "5. Starting indexer and api-server..."
+docker-compose -f "${PROJECT_ROOT}/docker-compose.test.yml" up -d indexer api-server
 
 echo ""
 echo "=== Test Environment Ready ==="
 echo "  Anvil RPC:        http://localhost:8545"
-echo "  Indexer API:      http://localhost:8081"
+echo "  Indexer:          http://localhost:8081"
+echo "  API Server:       http://localhost:8082"
 echo "  Postgres:         localhost:5434"
 echo "  Valkey:           localhost:6380"
 echo "  Token1 (TUSDC):   ${TOKEN1_ADDRESS}"

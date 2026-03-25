@@ -13,7 +13,7 @@ k8s/
   gateway.yaml
   external-services.yaml      ExternalName services: postgres, valkey, kafka, eth-rpc
   kafka-connect/              deployment.yaml, service.yaml, debezium-configmap.yaml, debezium-init-job.yaml
-  kafka-router/               deployment.yaml
+  dashboard/               deployment.yaml
   indexer/                    configmap.yaml, deployment.yaml
   api-server/                 deployment.yaml, service.yaml
   monitoring/
@@ -112,17 +112,17 @@ make docker-build
 
 docker tag eth-indexer      your-registry/eth-indexer:latest
 docker tag eth-api-server   your-registry/eth-api-server:latest
-docker tag eth-kafka-router your-registry/eth-kafka-router:latest
+docker tag eth-dashboard your-registry/eth-dashboard:latest
 
 docker push your-registry/eth-indexer:latest
 docker push your-registry/eth-api-server:latest
-docker push your-registry/eth-kafka-router:latest
+docker push your-registry/eth-dashboard:latest
 ```
 
 Then update the `image:` fields in:
 - `k8s/indexer/deployment.yaml`
 - `k8s/api-server/deployment.yaml`
-- `k8s/kafka-router/deployment.yaml`
+- `k8s/dashboard/deployment.yaml`
 
 ---
 
@@ -222,7 +222,7 @@ kubectl create configmap indexer-config \
   -n eth-indexer --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f k8s/indexer/deployment.yaml
 kubectl apply -f k8s/api-server/
-kubectl apply -f k8s/kafka-router/
+kubectl apply -f k8s/dashboard/
 
 # 5. Ingress
 envsubst < k8s/gateway.yaml | kubectl apply -f -
@@ -282,7 +282,7 @@ The `debezium-init-job.yaml` Job runs once to register the PostgreSQL CDC connec
 
 | Property | Value |
 |---|---|
-| Image | `eth-kafka-router:latest` |
+| Image | `eth-dashboard:latest` |
 | Replicas | **1 (fixed)** — single consumer group member |
 | Source topic | `eth-indexer.public.event_records` (Debezium CDC) |
 | Dest prefix | `eth-indexer.events.{eventType}` |
@@ -338,7 +338,7 @@ The `debezium-init-job.yaml` Job runs once to register the PostgreSQL CDC connec
 ```bash
 kubectl logs -n eth-indexer -l app=indexer       -f
 kubectl logs -n eth-indexer -l app=api-server    -f
-kubectl logs -n eth-indexer -l app=kafka-router  -f
+kubectl logs -n eth-indexer -l app=dashboard  -f
 ```
 
 ### Check pod status

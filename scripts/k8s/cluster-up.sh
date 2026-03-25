@@ -58,7 +58,7 @@ eval "$(minikube docker-env -p "$CLUSTER_NAME")"
 
 docker build -f "$ROOT/services/indexer/Dockerfile"     -t eth-indexer:latest     "$ROOT"
 docker build -f "$ROOT/services/api-server/Dockerfile"  -t eth-api-server:latest  "$ROOT"
-docker build -f "$ROOT/services/kafka-router/Dockerfile" -t eth-kafka-router:latest "$ROOT"
+docker build -f "$ROOT/services/dashboard/Dockerfile" -t eth-dashboard:latest "$ROOT"
 
 # ── secrets ───────────────────────────────────────────────────────────────────
 info "Applying secrets..."
@@ -102,7 +102,7 @@ info "Applying application services..."
 envsubst < "$ROOT/k8s/indexer/configmap.yaml" | kubectl apply -f -
 kubectl apply -f "$ROOT/k8s/indexer/deployment.yaml"
 kubectl apply -f "$ROOT/k8s/api-server/"
-kubectl apply -f "$ROOT/k8s/kafka-router/"
+kubectl apply -f "$ROOT/k8s/dashboard/"
 
 info "Applying ingress..."
 envsubst < "$ROOT/k8s/gateway.yaml" | kubectl apply -f -
