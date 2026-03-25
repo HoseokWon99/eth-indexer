@@ -4,6 +4,7 @@ metadata:
   name: dashboard
   namespace: eth-indexer
 spec:
+  # Single replica — single consumer group member to preserve ordering
   replicas: 1
   selector:
     matchLabels:
@@ -21,28 +22,10 @@ spec:
         - name: dashboard
           image: eth-dashboard:latest
           imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8090
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: kafka:9092
             - name: SOURCE_TOPIC
               value: eth-indexer.public.event_records
-            - name: UI_PORT
-              value: "8090"
-            - name: TOPICS
-              value: "Transfer,Approval"
-            - name: API_SERVER_URL
-              value: "http://api-server"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8090
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8090
-            initialDelaySeconds: 15
-            periodSeconds: 10
+            - name: DEST_TOPIC_PREFIX
+              value: eth-indexer.events
