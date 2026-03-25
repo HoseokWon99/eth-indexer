@@ -83,4 +83,3 @@ scripts/
 - @.claude/services.md — Shared libs, Indexer, API Server, Dashboard internals
 - @.claude/monitoring.md — Prometheus, Grafana, kafka-exporter setup
 - @.claude/kubernetes.md — Secrets, cluster scripts, apply order, port-forwards
-- @.cluade/e2e-test.md - See when do e2e test.

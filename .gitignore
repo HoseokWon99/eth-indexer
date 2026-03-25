@@ -57,3 +57,4 @@ test/node_modules/
 test/coverage/
 
 
+/test/package-lock.json
