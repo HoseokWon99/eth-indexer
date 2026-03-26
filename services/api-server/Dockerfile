@@ -8,7 +8,7 @@ ENV GOTOOLCHAIN=auto
 COPY libs/common/go.mod libs/common/
 COPY libs/config/go.mod libs/config/go.sum* libs/config/
 COPY services/api-server/go.mod services/api-server/go.sum* services/api-server/
-RUN go work init ./libs/common ./libs/config ./services/api-server
+RUN go work init libs/common libs/config services/api-server
 RUN go mod tidy -C services/api-server
 
 # Copy source

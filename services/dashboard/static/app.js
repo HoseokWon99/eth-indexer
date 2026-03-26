@@ -114,7 +114,7 @@ async function init() {
     topics = cfg.topics || [];
     apiServerUrl = cfg.apiServerUrl || '';
   } catch (e) {
-    console.warn('config fetch failed:', e);
+    console.warn('indexer fetch failed:', e);
   }
 
   const nav = document.getElementById('tabs');

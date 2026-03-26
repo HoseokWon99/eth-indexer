@@ -27,9 +27,12 @@
 go.work
 go.work.sum
 
-#config file
+#indexer file
 config.json
 config.example.json
+
+#volume
+volume/
 
 # monitoring scripts
 .scripts

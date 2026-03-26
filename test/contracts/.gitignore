@@ -12,3 +12,4 @@ lib/
 coverage/
 *.log
 /contracts/foundry.lock
+/lib/openzeppelin-contracts/

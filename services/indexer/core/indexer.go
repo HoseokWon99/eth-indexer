@@ -100,6 +100,9 @@ func (ix *Indexer) indexAll(ctx context.Context, blockNumber uint64) {
 				log.Printf("[Indexer:%s] Failed to get last block number %v", sc.EventName(), err)
 				return
 			}
+			if blockNumber <= ix.confirmedAfter {
+				return
+			}
 			fromBlockNumber := lastBlockNumber + 1
 			toBlockNumber := blockNumber - ix.confirmedAfter
 

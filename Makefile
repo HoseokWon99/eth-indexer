@@ -101,6 +101,14 @@ test-env-down:
 test-env-clean:
 	@bash scripts/test/teardown-test-env.sh
 
+local-up:
+	docker compose -f docker-compose.local.yml up
+
+local-down:
+	docker compose -f docker-compose.local.yml down
+
+
+
 # Testing targets
 test-integration:
 	@docker-compose -f docker-compose.test.yml run --rm test-runner
@@ -121,13 +129,8 @@ contracts-build:
 contracts-test:
 	@cd test/contracts && forge test
 
-# Start monitoring stack (Kafka, Debezium, Prometheus, Grafana)
-monitoring-up:
-	docker-compose up -d kafka kafka-connect debezium-init dashboard kafka-exporter prometheus grafana
-
-# Stop monitoring stack
-monitoring-down:
-	docker-compose stop kafka kafka-connect debezium-init dashboard kafka-exporter prometheus grafana
+generate-events:
+	@bash scripts/anvil/generate-events.sh
 
 # Minikube cluster
 cluster-up:
@@ -138,9 +141,6 @@ cluster-down:
 
 test-cluster:
 	@bash scripts/k8s/test-cluster.sh ./indexer-config.test.json
-
-generate-events:
-	@bash scripts/anvil/generate-events.sh
 
 # Show help
 help:

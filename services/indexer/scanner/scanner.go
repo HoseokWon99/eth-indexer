@@ -103,6 +103,7 @@ func (ers *EventRecordsScanner) parseLog(lg types.Log) (common.EventRecord, erro
 		TxHash:          lg.TxHash.Hex(),
 		BlockHash:       lg.BlockHash.Hex(),
 		BlockNumber:     lg.BlockNumber,
+		LogIndex:        uint64(lg.Index),
 		Data:            data,
 		Timestamp:       time.Now().UTC(),
 	}, nil

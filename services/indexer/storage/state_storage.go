@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,21 +82,22 @@ func (ss *SimpleStateStorage) init(eventNames []string, offsetBlockNumber uint64
 }
 
 func createFileIfNotExists(filename string) error {
+	if err := createDirIfNotExists(filepath.Dir(filename)); err != nil {
+		return err
+	}
 	_, err := os.Stat(filename)
 	if os.IsNotExist(err) {
-		dir := filepath.Dir(filename)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create parent directories: %w", err)
-		}
-		emptyState := []byte("{}")
-		if err := os.WriteFile(filename, emptyState, 0644); err != nil {
-			return fmt.Errorf("failed to create state file: %w", err)
-		}
-		log.Printf("Created state file: %s", filename)
-	} else if err != nil {
-		return fmt.Errorf("failed to check state file: %w", err)
+		return os.WriteFile(filename, []byte("{}"), 0644)
 	}
-	return nil
+	return err
+}
+
+func createDirIfNotExists(dirname string) error {
+	_, err := os.Stat(dirname)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(dirname, 0755)
+	}
+	return err
 }
 
 func readState(filename string) (core.State, error) {

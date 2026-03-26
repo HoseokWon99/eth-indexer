@@ -56,4 +56,7 @@ test/contracts/lib/forge-std/
 test/node_modules/
 test/coverage/
 
-/test/package-lock.json
+/**/*/package-lock.json
+
+# Test volume
+volume/

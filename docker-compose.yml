@@ -79,7 +79,7 @@ services:
     env_file:
       - .env
     environment:
-      - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/config.json}
+      - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/indexer.json}
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,7 +87,7 @@ services:
       - eth-indexer
     restart: unless-stopped
     volumes:
-      - ./config.indexer.json:/etc/eth-indexer/config.json:ro
+      - ./indexer.indexer.json:/etc/eth-indexer/indexer.json:ro
       - ./state:/var/lib/eth-indexer/state
 
   api-server:
@@ -98,7 +98,7 @@ services:
     env_file:
       - .env
     environment:
-      - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/config.json}
+      - CONFIG_PATH=${CONFIG_PATH:-/etc/eth-indexer/indexer.json}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -110,7 +110,7 @@ services:
       - eth-indexer
     restart: unless-stopped
     volumes:
-      - ./config.api-server.json:/etc/eth-indexer/config.json:ro
+      - ./indexer.api-server.json:/etc/eth-indexer/indexer.json:ro
 
   kafka:
     image: apache/kafka:3.7.0

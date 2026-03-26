@@ -25,8 +25,8 @@ A production-grade Ethereum event indexer that captures smart contract events an
 git clone <repository>
 cd eth-indexer
 
-# Copy example config
-cp config.example.json config.json
+# Copy example indexer
+cp indexer.example.json indexer.json
 ```
 
 2. **Edit `config.json`:**

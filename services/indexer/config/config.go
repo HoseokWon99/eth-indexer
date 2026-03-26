@@ -35,15 +35,15 @@ type Options struct {
 func LoadOptions() (*Options, error) {
 	ixOpts, err := loadIndexerFromEnv()
 	if err != nil {
-		return nil, fmt.Errorf("indexer config: %w", err)
+		return nil, fmt.Errorf("indexer indexer: %w", err)
 	}
 	pgOpts, err := config.LoadPostgresFromEnv()
 	if err != nil {
-		return nil, fmt.Errorf("postgres config: %w", err)
+		return nil, fmt.Errorf("postgres indexer: %w", err)
 	}
 	apiOpts, err := loadApiOptions()
 	if err != nil {
-		return nil, fmt.Errorf("api config: %w", err)
+		return nil, fmt.Errorf("api indexer: %w", err)
 	}
 	return &Options{Indexer: ixOpts, Postgres: pgOpts, API: apiOpts}, nil
 }
@@ -93,7 +93,7 @@ func loadIndexerFromEnv() (*IndexerOptions, error) {
 		return nil, err
 	}
 
-	statusFilePath := config.GetEnv("INDEXER_STATUS_FILE_PATH", "/var/lib/eth-indexer/state/indexer-state.json")
+	statusFilePath := config.GetEnv("INDEXER_STATUS_FILE_PATH", "/var/lib/indexer/state.json")
 
 	return &IndexerOptions{
 		RpcUrl:            rpcURL,

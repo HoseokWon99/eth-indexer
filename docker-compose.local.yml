@@ -20,9 +20,9 @@ services:
     image: postgres:16-alpine
     container_name: eth-indexer-test-postgres
     environment:
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
+      POSTGRES_DB: eth_indexer
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: 0000
     ports:
       - "5434:5432"
     networks:
@@ -47,59 +47,32 @@ services:
       timeout: 3s
       retries: 5
 
-  # Contract Deployer - Deploy ERC20 test contracts (one-shot)
+  # Deploy + Generate - Deploy ERC20 contracts and emit events (one-shot)
   # Addresses are deterministic from Anvil's default mnemonic:
   #   Token1 (TUSDC): 0x5FbDB2315678afecb367f032d93F642f64180aa3
   #   Token2 (TUSDT): 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
-  contract-deployer:
-    image: ghcr.io/foundry-rs/foundry:latest
-    container_name: eth-indexer-contract-deployer
+  deploy-and-generate:
+    build:
+      context: ./test/contracts
+      dockerfile: Dockerfile
+    container_name: eth-indexer-test-contracts
     depends_on:
       anvil:
         condition: service_healthy
     environment:
       RPC_URL: http://anvil:8545
       PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-    volumes:
-      - ./test/contracts:/workspace
-    working_dir: /workspace
-    command: >
-      sh -c "forge script script/Deploy.s.sol:Deploy
-        --rpc-url $$RPC_URL
-        --broadcast
-        --legacy
-        -vv"
-    networks:
-      - eth-indexer-test
-    restart: "no"
-
-  # Event Generator - Emit 120 Transfer + 120 Approval events (one-shot)
-  event-generator:
-    image: ghcr.io/foundry-rs/foundry:latest
-    container_name: eth-indexer-event-generator
-    depends_on:
-      contract-deployer:
-        condition: service_completed_successfully
-    environment:
-      RPC_URL: http://anvil:8545
       TOKEN1_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
       TOKEN2_ADDRESS: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
       MNEMONIC: "test test test test test test test test test test test junk"
     volumes:
-      - ./test/contracts:/workspace
-    working_dir: /workspace
-    command: >
-      sh -c "forge script script/GenerateEvents.s.sol:GenerateEvents
-        --rpc-url $$RPC_URL
-        --broadcast
-        --legacy
-        -vv"
+      - ./test/contracts/broadcast:/var/lib/eth-indexer/broadcast
     networks:
       - eth-indexer-test
     restart: "no"
 
   # Indexer - Service under test
-  # Reads all config from env vars; ABI loaded from mounted file.
+  # Reads all indexer from env vars; ABI loaded from mounted file.
   indexer:
     build:
       context: .
@@ -108,15 +81,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      event-generator:
+      deploy-and-generate:
         condition: service_completed_successfully
     environment:
       ETHEREUM_RPC_URL: ws://anvil:8545
       INDEXER_CONTRACT_ADDRESSES: "0x5FbDB2315678afecb367f032d93F642f64180aa3,0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
       INDEXER_ABI_PATH: /etc/eth-indexer/abi.json
       INDEXER_EVENT_NAMES: Transfer,Approval
-      INDEXER_CONFIRMED_AFTER: "1"
-      INDEXER_OFFSET_BLOCK_NUMBER: "0"
+      INDEXER_CONFIRMED_AFTER: 12
+      INDEXER_OFFSET_BLOCK_NUMBER: 0
       INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/test-state/status.json
       API_PORT: "8080"
       POSTGRES_HOST: postgres
@@ -125,8 +98,8 @@ services:
       POSTGRES_USER: indexer
       POSTGRES_PASSWORD: indexer_password
     volumes:
-      - ./config/abi.json:/etc/eth-indexer/abi.json:ro
-      - indexer-state:/var/lib/eth-indexer/test-state
+      - ./erc20-abi.test.json:/etc/eth-indexer/abi.json:ro
+      - ./volume/indexer:/var/lib/indexer
     ports:
       - "8081:8080"
     networks:
@@ -138,7 +111,7 @@ services:
       retries: 20
 
   # API Server - Service under test
-  # All config from env vars.
+  # All indexer from env vars.
   api-server:
     build:
       context: .
@@ -169,35 +142,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  # Test Runner - Jest E2E tests
-  # Starts after indexer and api-server are healthy.
-  test-runner:
-    image: node:20-alpine
-    container_name: eth-indexer-test-runner
-    depends_on:
-      indexer:
-        condition: service_healthy
-      api-server:
-        condition: service_healthy
-    environment:
-      API_BASE_URL: http://api-server:8081
-      INDEXER_BASE_URL: http://indexer:8080
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
-    volumes:
-      - ./test:/app
-    working_dir: /app/e2e
-    command: sh -c "npm install && npm test"
-    networks:
-      - eth-indexer-test
-    restart: "no"
-
-volumes:
-  indexer-state:
 
 networks:
   eth-indexer-test:

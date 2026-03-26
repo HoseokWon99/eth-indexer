@@ -33,10 +33,10 @@ spec:
                   name: postgres-credentials
                   key: POSTGRES_DB
           volumeMounts:
-            - name: debezium-config
+            - name: debezium-indexer
               mountPath: /etc/debezium
       volumes:
-        - name: debezium-config
+        - name: debezium-indexer
           configMap:
             name: debezium-config
             defaultMode: 0755

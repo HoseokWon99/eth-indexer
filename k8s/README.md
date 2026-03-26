@@ -192,7 +192,7 @@ Set the `GATEWAY_HOST` env var before running `envsubst`. Paths routed:
 ### Automated (minikube)
 
 ```bash
-scripts/k8s/cluster-up.sh <path-to-indexer-config.json>
+scripts/k8s/cluster-up.sh <path-to-indexer-indexer.json>
 ```
 
 Requires all env vars above to be exported or present in `.env`. The script:
@@ -216,9 +216,9 @@ envsubst < k8s/external-services.yaml | kubectl apply -f -
 # 3. Kafka Connect + Debezium connector registration
 kubectl apply -f k8s/kafka-connect/
 
-# 4. Application services (indexer config created from file)
-kubectl create configmap indexer-config \
-  --from-file=indexer-config.json=<path-to-indexer-config.json> \
+# 4. Application services (indexer indexer created from file)
+kubectl create configmap indexer-indexer \
+  --from-file=indexer-indexer.json=<path-to-indexer-indexer.json> \
   -n eth-indexer --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f k8s/indexer/deployment.yaml
 kubectl apply -f k8s/api-server/
@@ -366,8 +366,8 @@ kubectl port-forward -n eth-indexer svc/kafka-connect 8083:8083
 ### Update indexer config
 
 ```bash
-kubectl create configmap indexer-config \
-  --from-file=indexer-config.json=<path-to-new-config.json> \
+kubectl create configmap indexer-indexer \
+  --from-file=indexer-indexer.json=<path-to-new-indexer.json> \
   -n eth-indexer --dry-run=client -o yaml | kubectl apply -f -
 # Restart indexer to pick up changes:
 kubectl rollout restart deployment/indexer -n eth-indexer

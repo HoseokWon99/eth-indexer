@@ -14,4 +14,4 @@ anvil_docker = "http://anvil:8545"
 [profile.default.fuzz]
 runs = 256
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+# See more indexer options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

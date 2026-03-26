@@ -8,7 +8,7 @@ ENV GOTOOLCHAIN=auto
 COPY libs/common/go.mod libs/common/
 COPY libs/config/go.mod libs/config/go.sum* libs/config/
 COPY services/indexer/go.mod services/indexer/go.sum* services/indexer/
-RUN go work init ./libs/common ./libs/config ./services/indexer
+RUN go work init libs/common libs/config services/indexer
 RUN go mod tidy -C services/indexer
 
 # Copy source

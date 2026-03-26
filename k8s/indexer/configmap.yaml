@@ -16,7 +16,7 @@ data:
   INDEXER_STATUS_FILE_PATH: "/var/lib/eth-indexer/state/indexer-state.json"
   # Path to the ABI JSON file mounted into the container.
   INDEXER_ABI_PATH: "/etc/eth-indexer/abi.json"
-  # ABI JSON — mounted as a file at ABI_PATH via the abi-config volume below.
+  # ABI JSON — mounted as a file at ABI_PATH via the abi-indexer volume below.
   abi.json: |
     [
       {
