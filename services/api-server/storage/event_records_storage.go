@@ -44,14 +44,11 @@ func (ers *PostgresEventRecordsStorage) FindAll(
 	}
 	defer rows.Close()
 	records := make([]common.EventRecord, 0)
-	var (
-		tmp     string
-		rawData []byte
-	)
+	var rawData []byte
 	for rows.Next() {
 		record := common.EventRecord{Data: make(map[string]interface{})}
 		err := rows.Scan(
-			&tmp,
+			&record.Topic,
 			&record.ContractAddress,
 			&record.TxHash,
 			&record.BlockHash,

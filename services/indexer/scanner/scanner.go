@@ -99,6 +99,7 @@ func (ers *EventRecordsScanner) parseLog(lg types.Log) (common.EventRecord, erro
 		return common.EventRecord{}, err
 	}
 	return common.EventRecord{
+		Topic:           ers.event.Name,
 		ContractAddress: lg.Address.Hex(),
 		TxHash:          lg.TxHash.Hex(),
 		BlockHash:       lg.BlockHash.Hex(),

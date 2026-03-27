@@ -3,6 +3,7 @@ package common
 import "time"
 
 type EventRecord struct {
+	Topic           string                 `json:"topic"`
 	ContractAddress string                 `json:"contract_address"`
 	TxHash          string                 `json:"tx_hash"`
 	BlockHash       string                 `json:"block_hash"`
