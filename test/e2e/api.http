@@ -1,0 +1,96 @@
+# eth-indexer API tests
+# Compatible with JetBrains HTTP Client, VS Code REST Client, etc.
+
+@baseUrl = http://localhost:8082
+@transferContract = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+@exampleTxHash = 0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1
+@exampleBlockHash = 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+
+###
+# Health check
+GET {{baseUrl}}/health
+
+###
+# Search Transfer events – no filters (returns all, default limit)
+GET {{baseUrl}}/search/Transfer
+
+###
+# Search Approval events – no filters
+GET {{baseUrl}}/search/Approval
+
+###
+# Filter by contract address (single)
+GET {{baseUrl}}/search/Transfer?contract_address={{transferContract}}
+
+###
+# Filter by contract address (multiple, comma-separated)
+GET {{baseUrl}}/search/Transfer?contract_address={{transferContract}},0xdAC17F958D2ee523a2206206994597C13D831ec7
+
+###
+# Filter by tx_hash
+GET {{baseUrl}}/search/Transfer?tx_hash={{exampleTxHash}}
+
+###
+# Filter by block_hash
+GET {{baseUrl}}/search/Transfer?block_hash={{exampleBlockHash}}
+
+###
+# Filter by exact block_number
+GET {{baseUrl}}/search/Transfer?block_number={"eq":19000000}
+
+###
+# Filter by block_number range (gte + lte)
+GET {{baseUrl}}/search/Transfer?block_number={"gte":19000000,"lte":19001000}
+
+###
+# Filter by block_number (gt only)
+GET {{baseUrl}}/search/Transfer?block_number={"gt":19000000}
+
+###
+# Filter by log_index (single)
+GET {{baseUrl}}/search/Transfer?log_index=0
+
+###
+# Filter by log_index (multiple)
+GET {{baseUrl}}/search/Transfer?log_index=0,1,2
+
+###
+# Filter by data (JSONB containment – match specific event field)
+# Example: Transfer events where "from" address matches
+GET {{baseUrl}}/search/Transfer?data={"from":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"}
+
+###
+# Filter by timestamp range
+GET {{baseUrl}}/search/Transfer?timestamp={"gte":"2024-01-01T00:00:00Z","lte":"2024-12-31T23:59:59Z"}
+
+###
+# Pagination – first page (limit 10)
+GET {{baseUrl}}/search/Transfer?limit=10
+
+###
+# Pagination – next page using cursor (block_number + log_index from last result)
+GET {{baseUrl}}/search/Transfer?limit=10&cursor={"block_number":19000500,"log_index":3}
+
+###
+# Combined: contract + block_number range + limit
+GET {{baseUrl}}/search/Transfer?contract_address={{transferContract}}&block_number={"gte":19000000,"lte":19001000}&limit=20
+
+###
+# Combined: contract + data filter + pagination
+GET {{baseUrl}}/search/Transfer?contract_address={{transferContract}}&data={"from":"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"}&limit=5
+
+###
+# Error: unknown topic → 404
+GET {{baseUrl}}/search/UnknownEvent
+
+###
+# Error: invalid block_number JSON → 400
+GET {{baseUrl}}/search/Transfer?block_number=not-json
+
+###
+# Error: invalid cursor JSON → 400
+GET {{baseUrl}}/search/Transfer?cursor=invalid
+
+###
+# Error: invalid log_index → 400
+GET {{baseUrl}}/search/Transfer?log_index=abc
