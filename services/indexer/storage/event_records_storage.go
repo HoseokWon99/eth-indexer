@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 
 	"eth-indexer.dev/libs/common"
 
@@ -33,6 +34,12 @@ func NewPostgresEventRecordsStorage(pool *pgx.ConnPool) *PostgresEventRecordsSto
 }
 
 func (ers *PostgresEventRecordsStorage) SaveAll(ctx context.Context, topic string, records []common.EventRecord) error {
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].BlockNumber != records[j].BlockNumber {
+			return records[i].BlockNumber < records[j].BlockNumber
+		}
+		return records[i].LogIndex < records[j].LogIndex
+	})
 	batch := ers.pool.BeginBatch()
 	params := make([]interface{}, 8)
 	params[0] = topic

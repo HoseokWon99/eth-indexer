@@ -1,4 +1,8 @@
 services:
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+
   # Anvil - Local Ethereum node
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
@@ -151,32 +155,11 @@ services:
       - eth-indexer-test
     restart: "no"
 
-  # Dashboard - CDC event router and SSE server
-  dashboard:
-    build:
-      context: .
-      dockerfile: services/dashboard/Dockerfile
-    container_name: eth-indexer-test-dashboard
-    depends_on:
-      kafka-connect:
-        condition: service_healthy
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SOURCE_TOPIC: eth-indexer.public.event_records
-      TOPICS: Transfer,Approval
-      UI_PORT: "8090"
-      API_SERVER_URL: http://api-server:8081
-    ports:
-      - "8090:8090"
-    networks:
-      - eth-indexer-test
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8090/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+  # ---------------------------------------------------------------------------
+  # Deploy (one-shot)
+  # ---------------------------------------------------------------------------
 
-  # Deploy - Deploy ERC20 contracts (one-shot)
+  # Deploy ERC20 test tokens
   # Addresses are deterministic from Anvil's default mnemonic:
   #   Token1 (TUSDC): 0x5FbDB2315678afecb367f032d93F642f64180aa3
   #   Token2 (TUSDT): 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
@@ -199,8 +182,35 @@ services:
       - eth-indexer-test
     restart: "no"
 
-  # Indexer - Service under test
-  # Reads config from env vars; ABI loaded from mounted file.
+  # Deploy StakingPool and UniswapPool (depends on ERC20 tokens above)
+  # Addresses are deterministic from Anvil's default mnemonic:
+  #   StakingPool: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+  #   UniswapPool: 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+  deploy-staking-contracts:
+    build:
+      context: ./test/contracts
+      dockerfile: Dockerfile
+    container_name: eth-indexer-test-deploy-staking
+    depends_on:
+      deploy-contracts:
+        condition: service_completed_successfully
+    environment:
+      RPC_URL: http://anvil:8545
+      PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      TOKEN1_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      TOKEN2_ADDRESS: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    command: ["forge script script/DeployStaking.s.sol:DeployStaking --rpc-url $$RPC_URL --broadcast --legacy -vv"]
+    volumes:
+      - ./test/contracts/broadcast:/var/lib/eth-indexer/broadcast
+    networks:
+      - eth-indexer-test
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Indexers
+  # ---------------------------------------------------------------------------
+
+  # Indexer - ERC20 Transfer/Approval events
   indexer:
     build:
       context: .
@@ -238,39 +248,87 @@ services:
       timeout: 3s
       retries: 20
 
-  # API Server - Service under test
-  api-server:
+  # Indexer - StakingPool events (Staked, Withdrawn, RewardPaid, RewardAdded)
+  indexer-staking:
     build:
       context: .
-      dockerfile: services/api-server/Dockerfile
-    container_name: eth-indexer-test-api-server
+      dockerfile: services/indexer/Dockerfile
+    container_name: eth-indexer-test-indexer-staking
     depends_on:
       postgres:
         condition: service_healthy
-      valkey:
-        condition: service_healthy
+      deploy-staking-contracts:
+        condition: service_completed_successfully
     environment:
-      API_PORT: "8081"
-      API_TTL: "300"
+      ETHEREUM_RPC_URL: ws://anvil:8545
+      INDEXER_CONTRACT_ADDRESSES: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+      INDEXER_ABI_PATH: /etc/eth-indexer/abi.json
+      INDEXER_EVENT_NAMES: Staked,Withdrawn,RewardPaid,RewardAdded
+      INDEXER_CONFIRMED_AFTER: 12
+      INDEXER_OFFSET_BLOCK_NUMBER: 0
+      INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/staking-state/status.json
+      API_PORT: "8080"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_DB: eth_indexer
       POSTGRES_USER: test
       POSTGRES_PASSWORD: "0000"
-      REDIS_HOST: valkey
-      REDIS_PORT: "6379"
-      TOPICS: Transfer,Approval
+    volumes:
+      - ./test/abi/StakingPool.json:/etc/eth-indexer/abi.json:ro
+      - ./volume/indexer-staking:/var/lib/eth-indexer
     ports:
-      - "8082:8081"
+      - "8084:8080"
     networks:
       - eth-indexer-test
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8081/health"]
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
 
-  # Generate Events - Emit Transfer/Approval events (one-shot, runs after deploy)
+  # Indexer - UniswapPool events (Mint, Burn, Swap, Sync)
+  indexer-uniswap:
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
+    container_name: eth-indexer-test-indexer-uniswap
+    depends_on:
+      postgres:
+        condition: service_healthy
+      deploy-staking-contracts:
+        condition: service_completed_successfully
+    environment:
+      ETHEREUM_RPC_URL: ws://anvil:8545
+      INDEXER_CONTRACT_ADDRESSES: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
+      INDEXER_ABI_PATH: /etc/eth-indexer/abi.json
+      INDEXER_EVENT_NAMES: Mint,Burn,Swap,Sync
+      INDEXER_CONFIRMED_AFTER: 12
+      INDEXER_OFFSET_BLOCK_NUMBER: 0
+      INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/uniswap-state/status.json
+      API_PORT: "8080"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: eth_indexer
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: "0000"
+    volumes:
+      - ./test/abi/UniswapPool.json:/etc/eth-indexer/abi.json:ro
+      - ./volume/indexer-uniswap:/var/lib/eth-indexer
+    ports:
+      - "8085:8080"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Event generators (one-shot)
+  # ---------------------------------------------------------------------------
+
+  # Generate ERC20 Transfer/Approval events
   generate-events:
     build:
       context: ./test/contracts
@@ -291,19 +349,114 @@ services:
     networks:
       - eth-indexer-test
     restart: "no"
+
+  # Generate StakingPool/UniswapPool events
+  generate-staking-events:
+    build:
+      context: ./test/contracts
+      dockerfile: Dockerfile
+    container_name: eth-indexer-test-generate-staking
+    depends_on:
+      indexer-staking:
+        condition: service_healthy
+      indexer-uniswap:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://anvil:8545
+      PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      MNEMONIC: "test test test test test test test test test test test junk"
+      STAKING_ADDRESS: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+      POOL_ADDRESS: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
+      TOKEN1_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      TOKEN2_ADDRESS: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    command: ["forge script script/GenerateStakingEvents.s.sol:GenerateStakingEvents --rpc-url $$RPC_URL --broadcast --legacy -vv"]
+    volumes:
+      - ./test/contracts/broadcast:/var/lib/eth-indexer/broadcast
+    networks:
+      - eth-indexer-test
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # App services
+  # ---------------------------------------------------------------------------
+
+  # API Server
+  api-server:
+    build:
+      context: .
+      dockerfile: services/api-server/Dockerfile
+    container_name: eth-indexer-test-api-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      API_PORT: "8081"
+      API_TTL: "300"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: eth_indexer
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: "0000"
+      REDIS_HOST: valkey
+      REDIS_PORT: "6379"
+      TOPICS: Transfer,Approval,Staked,Withdrawn,RewardPaid,RewardAdded,Mint,Burn,Swap,Sync
+    ports:
+      - "8082:8081"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Dashboard - CDC event router and SSE server
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: eth-indexer-test-dashboard
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SOURCE_TOPIC: eth-indexer.public.event_records
+      TOPICS: Transfer,Approval,Staked,Withdrawn,RewardPaid,RewardAdded,Mint,Burn,Swap,Sync
+      UI_PORT: "8090"
+      API_SERVER_URL: http://api-server:8081
+    ports:
+      - "8090:8090"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Gateway
+  # ---------------------------------------------------------------------------
+
   gateway:
     build:
       context: ./gateway
     container_name: eth-indexer-test-gateway
     ports:
-      - "${GATEWAY_PORT:-80}:80"
+      - "3003:80"
     depends_on:
       - api-server
       - dashboard
       - indexer
+      - indexer-staking
+      - indexer-uniswap
     networks:
       - eth-indexer-test
     restart: unless-stopped
+
 networks:
   eth-indexer-test:
     name: eth-indexer-test

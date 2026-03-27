@@ -93,8 +93,8 @@ test-debezium-up:
 test-debezium-down:
 	docker compose -f test/database/docker-compose.debezium.yml down
 
-local-up:
-	docker compose -f docker-compose.local.yml up -d
+local-up: local-down
+	docker compose -f docker-compose.local.yml up --build -d
 
 local-down:
 	docker compose -f docker-compose.local.yml down
@@ -107,6 +107,13 @@ contracts-build:
 
 contracts-test:
 	@cd test/contracts && forge test
+
+abi-json: contracts-build
+	@mkdir -p test/abi
+	@for contract in TestToken StakingPool UniswapPool; do \
+		jq '.abi' test/contracts/out/$$contract.sol/$$contract.json > test/abi/$$contract.json; \
+		echo "Generated test/abi/$$contract.json"; \
+	done
 
 generate-events:
 	@bash scripts/anvil/generate-events.sh

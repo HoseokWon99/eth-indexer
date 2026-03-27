@@ -43,6 +43,7 @@ func (c *Consumer) Run(ctx context.Context) {
 			log.Printf("consumer: fetch error: %v", err)
 			continue
 		}
+		log.Printf("[Consumer] Received message: %s", string(msg.Value))
 
 		var row struct {
 			Topic string `json:"topic"`

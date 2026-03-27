@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	"eth-indexer.dev/libs/common"
 	"eth-indexer.dev/services/api-server/types"
@@ -31,7 +32,9 @@ func (ers *PostgresEventRecordsStorage) FindAll(
 	if paging.Limit != 0 {
 		qb = qb.Limit(paging.Limit)
 	}
-	sql, args, err := qb.PlaceholderFormat(sq.Question).ToSql()
+	sql, args, err := qb.PlaceholderFormat(sq.Dollar).ToSql()
+	log.Printf("[Debug] SQL: %s, Args: [ %v]", sql, args)
+
 	if err != nil {
 		return nil, err
 	}
