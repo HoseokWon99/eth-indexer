@@ -1,37 +1,52 @@
 services:
   # Anvil - Local Ethereum node
   anvil:
-    build:
-      context: .
-      dockerfile: test/anvil/Dockerfile
+    image: ghcr.io/foundry-rs/foundry:latest
     container_name: eth-indexer-test-anvil
     ports:
       - "8545:8545"
     networks:
       - eth-indexer-test
     healthcheck:
-      test: ["CMD", "cast", "client", "--rpc-url", "http://localhost:8545"]
+      test: [ "CMD", "cast", "client", "--rpc-url", "http://localhost:8545" ]
       interval: 2s
       timeout: 5s
       retries: 10
+    entrypoint:
+      - anvil
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --block-time
+      - "1"
+      - --mnemonic
+      - "test test test test test test test test test test test junk"
 
   # Postgres - Test database
   postgres:
     image: postgres:16-alpine
-    container_name: eth-indexer-test-postgres
+    container_name: eth-indexer-test-database
     environment:
       POSTGRES_DB: eth_indexer
       POSTGRES_USER: test
-      POSTGRES_PASSWORD: 0000
+      POSTGRES_PASSWORD: "0000"
     ports:
       - "5434:5432"
     networks:
       - eth-indexer-test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U indexer -d eth_indexer_test"]
+      test: ["CMD-SHELL", "pg_isready -U test -d eth_indexer"]
       interval: 5s
       timeout: 5s
       retries: 5
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_replication_slots=5
+        -c max_wal_senders=5
+    # No volumes - fresh state on each run
 
   # Valkey - Test cache
   valkey:
@@ -46,25 +61,138 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    # No persistence - fresh state on each run
 
-  # Deploy + Generate - Deploy ERC20 contracts and emit events (one-shot)
+  zookeeper:
+    image: zookeeper:3.8
+    container_name: eth-indexer-test-zookeeper
+    ports:
+      - "8080:8080"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo srvr | nc localhost 2181 | grep -q Mode"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No volumes - fresh state on each run
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.1
+    container_name: eth-indexer-test-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,MINIKUBE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092,MINIKUBE://host.minikube.internal:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,MINIKUBE://0.0.0.0:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+    # No volumes - fresh state on each run
+
+  kafka-connect:
+    image: debezium/connect:2.6
+    container_name: eth-indexer-test-kafka-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: eth-indexer-connect
+      CONFIG_STORAGE_TOPIC: eth-indexer-connect-configs
+      OFFSET_STORAGE_TOPIC: eth-indexer-connect-offsets
+      STATUS_STORAGE_TOPIC: eth-indexer-connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # No volumes - fresh state on each run
+
+  debezium-init:
+    image: debezium/connect:2.6
+    container_name: eth-indexer-test-debezium-init
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: "0000"
+      POSTGRES_DB: eth_indexer
+    volumes:
+      - ./debezium:/etc/debezium
+    entrypoint: ["/bin/sh", "/etc/debezium/register-connector.sh"]
+    networks:
+      - eth-indexer-test
+    restart: "no"
+
+  # Dashboard - CDC event router and SSE server
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    container_name: eth-indexer-test-dashboard
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SOURCE_TOPIC: eth-indexer.public.event_records
+      TOPICS: Transfer,Approval
+      UI_PORT: "8090"
+      API_SERVER_URL: http://api-server:8081
+    ports:
+      - "8090:8090"
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Deploy - Deploy ERC20 contracts (one-shot)
   # Addresses are deterministic from Anvil's default mnemonic:
   #   Token1 (TUSDC): 0x5FbDB2315678afecb367f032d93F642f64180aa3
   #   Token2 (TUSDT): 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
-  deploy-and-generate:
+  deploy-contracts:
     build:
       context: ./test/contracts
       dockerfile: Dockerfile
-    container_name: eth-indexer-test-contracts
+    container_name: eth-indexer-test-deploy
     depends_on:
       anvil:
         condition: service_healthy
     environment:
       RPC_URL: http://anvil:8545
       PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-      TOKEN1_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-      TOKEN2_ADDRESS: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
       MNEMONIC: "test test test test test test test test test test test junk"
+    command: ["forge script script/Deploy.s.sol:Deploy --rpc-url $$RPC_URL --broadcast --legacy -vv"]
     volumes:
       - ./test/contracts/broadcast:/var/lib/eth-indexer/broadcast
     networks:
@@ -72,7 +200,7 @@ services:
     restart: "no"
 
   # Indexer - Service under test
-  # Reads all indexer from env vars; ABI loaded from mounted file.
+  # Reads config from env vars; ABI loaded from mounted file.
   indexer:
     build:
       context: .
@@ -81,7 +209,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      deploy-and-generate:
+      deploy-contracts:
         condition: service_completed_successfully
     environment:
       ETHEREUM_RPC_URL: ws://anvil:8545
@@ -94,12 +222,12 @@ services:
       API_PORT: "8080"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
+      POSTGRES_DB: eth_indexer
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: "0000"
     volumes:
       - ./erc20-abi.test.json:/etc/eth-indexer/abi.json:ro
-      - ./volume/indexer:/var/lib/indexer
+      - ./volume/indexer:/var/lib/eth-indexer
     ports:
       - "8081:8080"
     networks:
@@ -111,7 +239,6 @@ services:
       retries: 20
 
   # API Server - Service under test
-  # All indexer from env vars.
   api-server:
     build:
       context: .
@@ -127,9 +254,9 @@ services:
       API_TTL: "300"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer_test
-      POSTGRES_USER: indexer
-      POSTGRES_PASSWORD: indexer_password
+      POSTGRES_DB: eth_indexer
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: "0000"
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
       TOPICS: Transfer,Approval
@@ -143,6 +270,40 @@ services:
       timeout: 3s
       retries: 10
 
+  # Generate Events - Emit Transfer/Approval events (one-shot, runs after deploy)
+  generate-events:
+    build:
+      context: ./test/contracts
+      dockerfile: Dockerfile
+    container_name: eth-indexer-test-generate
+    depends_on:
+      indexer:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://anvil:8545
+      PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      TOKEN1_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      TOKEN2_ADDRESS: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+      MNEMONIC: "test test test test test test test test test test test junk"
+    command: ["forge script script/GenerateEvents.s.sol:GenerateEvents --rpc-url $$RPC_URL --broadcast --legacy -vv"]
+    volumes:
+      - ./test/contracts/broadcast:/var/lib/eth-indexer/broadcast
+    networks:
+      - eth-indexer-test
+    restart: "no"
+  gateway:
+    build:
+      context: ./gateway
+    container_name: eth-indexer-test-gateway
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    depends_on:
+      - api-server
+      - dashboard
+      - indexer
+    networks:
+      - eth-indexer-test
+    restart: unless-stopped
 networks:
   eth-indexer-test:
     name: eth-indexer-test

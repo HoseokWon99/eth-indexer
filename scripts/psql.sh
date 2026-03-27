@@ -9,10 +9,10 @@ if [ -f .env ]; then
 fi
 
 # PostgreSQL connection settings (with defaults)
-CONTAINER_NAME="${POSTGRES_CONTAINER:-eth-postgres}"
+CONTAINER_NAME="${POSTGRES_CONTAINER:-eth-database}"
 POSTGRES_DB="${POSTGRES_DB:-eth_indexer}"
-POSTGRES_USER="${POSTGRES_USER:-postgres}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+POSTGRES_USER="${POSTGRES_USER:-database}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-database}"
 POSTGRES_PORT="${POSTGRES_PORT:-5433}"
 
 # Colors

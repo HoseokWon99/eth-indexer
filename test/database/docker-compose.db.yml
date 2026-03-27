@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: eth-indexer-postgres-test
+    container_name: eth-indexer-test-postgres
     environment:
       POSTGRES_DB: eth_indexer_test
       POSTGRES_USER: indexer
@@ -24,7 +24,7 @@ services:
 
   valkey:
     image: valkey/valkey:7-alpine
-    container_name: eth-indexer-valkey-test
+    container_name: eth-indexer-test-valkey
     ports:
       - "6379:6379"
     networks:

@@ -152,7 +152,7 @@ test/integration/
 test/e2e/  (moved from test/)
 ├── setup.js
 ├── health.test.js
-├── search.test.js
+├── eth-indexer.test.js
 ├── filters.test.js
 ├── errors.test.js
 └── performance.test.js

@@ -30,7 +30,10 @@ run-indexer:
 	cd services/indexer && go run .
 
 run-api-server:
-	cd services/api-server && go run .
+	gcd services/api-server && go run .
+
+run-dashboard:
+	cd services/dashboard && go run .
 
 # Tidy all modules
 tidy-all:
@@ -52,14 +55,6 @@ docker-build:
 	docker build -f services/api-server/Dockerfile -t eth-api-server:latest .
 	docker build -f services/dashboard/Dockerfile -t eth-dashboard:latest .
 
-# Start docker-compose services
-docker-up:
-	docker-compose up -d
-
-# Stop docker-compose services
-docker-down:
-	docker-compose down
-
 # Clean build artifacts
 clean:
 	rm -rf bin/
@@ -69,59 +64,43 @@ clean:
 deps:
 	go work sync
 
-# Format code
-fmt:
-	cd libs/common && go fmt ./...
-	cd services/indexer && go fmt ./...
-	cd services/api-server && go fmt ./...
-	cd services/dashboard && go fmt ./...
-
 # Run linter
 lint:
 	golangci-lint run
 
-# Fork Ethereum mainnet locally with Anvil
-anvil-fork:
-	anvil --host 0.0.0.0 --block-time 1 --fork-url ${FORK_URL}
+test-anvil-up:
+	docker compose -f test/anvil/docker-compose.anvil.yml up -d
+
+test-anvil-down:
+	docker compose -f test/anvil/docker-compose.anvil.yml down
+
+test-db-up:
+	docker compose -f test/database/docker-compose.db.yml up -d
+
+test-db-down:
+	docker compose -f test/database/docker-compose.db.yml down
 
 # Kafka test environment
-kafka-up:
+test-kafka-up:
 	docker compose -f test/kafka/docker-compose.kafka.yml up -d
 
-kafka-down:
+test-kafka-down:
 	docker compose -f test/kafka/docker-compose.kafka.yml down
 
-# Test environment management
-test-env-up:
-	@bash scripts/test/setup-test-env.sh
+test-debezium-up:
+	docker compose -f test/database/docker-compose.debezium.yml up -d
 
-test-env-down:
-	@docker-compose -f docker-compose.test.yml down
-
-test-env-clean:
-	@bash scripts/test/teardown-test-env.sh
+test-debezium-down:
+	docker compose -f test/database/docker-compose.debezium.yml down
 
 local-up:
-	docker compose -f docker-compose.local.yml up
+	docker compose -f docker-compose.local.yml up -d
 
 local-down:
 	docker compose -f docker-compose.local.yml down
 
-
-
-# Testing targets
-test-integration:
-	@docker-compose -f docker-compose.test.yml run --rm test-runner
-
-test-e2e: test-env-clean test-env-up test-integration test-env-down
-
-test-all: test-unit test-e2e
-
-# Contract targets
-install-foundry:
-	@echo "Installing Foundry..."
-	@curl -L https://foundry.paradigm.xyz | bash
-	@echo "Run 'foundryup' to complete installation"
+test-e2e:
+	cd test/e2e && npm test
 
 contracts-build:
 	@cd test/contracts && forge build

@@ -88,8 +88,8 @@ go mod download
     "host": "localhost",
     "port": 5432,
     "database": "eth_indexer",
-    "user": "postgres",
-    "password": "postgres"
+    "user": "database",
+    "password": "database"
   }
 }
 ```
@@ -129,11 +129,11 @@ go run ./cmd/eth-indexer
     ]
   },
   "postgres": {
-    "host": "postgres",
+    "host": "database",
     "port": 5432,
     "database": "eth_indexer",
-    "user": "postgres",
-    "password": "postgres",
+    "user": "database",
+    "password": "database",
     "max_connections": 20
   },
   "redis": {

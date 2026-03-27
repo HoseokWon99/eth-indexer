@@ -23,7 +23,6 @@ HTTP Client
 ```
 
 ## CDC / Monitoring Pipeline
-
 ```
 PostgreSQL (WAL)
 → Debezium (Kafka Connect) — CDC via pgoutput plugin

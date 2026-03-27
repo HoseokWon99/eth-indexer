@@ -39,7 +39,7 @@ func LoadOptions() (*Options, error) {
 	}
 	pgOpts, err := config.LoadPostgresFromEnv()
 	if err != nil {
-		return nil, fmt.Errorf("postgres indexer: %w", err)
+		return nil, fmt.Errorf("database indexer: %w", err)
 	}
 	apiOpts, err := loadApiOptions()
 	if err != nil {

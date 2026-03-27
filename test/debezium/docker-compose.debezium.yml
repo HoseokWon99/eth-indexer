@@ -1,0 +1,50 @@
+services:
+  kafka-connect:
+    image: debezium/connect:2.6
+    container_name: eth-indexer-test-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: eth-indexer-connect
+      CONFIG_STORAGE_TOPIC: eth-indexer-connect-configs
+      OFFSET_STORAGE_TOPIC: eth-indexer-connect-offsets
+      STATUS_STORAGE_TOPIC: eth-indexer-connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    networks:
+      - eth-indexer-test
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # No volumes - fresh state on each run
+
+  debezium-init:
+    image: debezium/connect:2.6
+    container_name: eth-indexer-test-init
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ../../debezium:/etc/debezium
+    entrypoint: ["/bin/sh", "/etc/debezium/register-connector.sh"]
+    networks:
+      - eth-indexer-test
+    restart: "no"
+
+networks:
+  eth-indexer-test:
+    name: eth-indexer-test
+    external: true

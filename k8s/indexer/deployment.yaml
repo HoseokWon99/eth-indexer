@@ -15,9 +15,9 @@ spec:
         app: indexer
     spec:
       initContainers:
-        - name: wait-for-postgres
+        - name: wait-for-database
           image: busybox
-          command: ["sh", "-c", "until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done"]
+          command: ["sh", "-c", "until nc -z database 5432; do echo waiting for database; sleep 2; done"]
       containers:
         - name: indexer
           image: eth-indexer:latest
@@ -32,7 +32,7 @@ spec:
                   name: rpc-credentials
                   key: RPC_URL
             - name: POSTGRES_HOST
-              value: postgres
+              value: database
             - name: POSTGRES_PORT
               value: "5432"
             - name: POSTGRES_DB

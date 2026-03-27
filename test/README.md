@@ -77,7 +77,7 @@ test/
 ├── e2e/                  # E2E tests for live service
 │   ├── setup.js          # Test utilities
 │   ├── health.test.js    # Health and status tests
-│   ├── search.test.js    # Search endpoint tests
+│   ├── eth-indexer.test.js    # Search endpoint tests
 │   ├── filters.test.js   # Filter parameter tests
 │   ├── errors.test.js    # Error handling tests
 │   └── performance.test.js # Performance tests
@@ -155,7 +155,7 @@ Tests for health and status endpoints:
 - Block numbers are numeric and non-negative
 - Block numbers update over time
 
-### 2. Search Tests (`e2e/search.test.js`)
+### 2. Search Tests (`e2e/eth-indexer.test.js`)
 
 Tests for search endpoints:
 - Response format (count + result)

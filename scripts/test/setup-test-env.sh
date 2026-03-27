@@ -10,7 +10,7 @@ COMPOSE="docker-compose -f ${PROJECT_ROOT}/docker-compose.test.yml"
 echo "=== Setting up Test Environment ==="
 
 echo "1. Starting infrastructure (Anvil, Postgres, Valkey)..."
-$COMPOSE up -d anvil postgres valkey
+$COMPOSE up -d anvil database valkey
 
 echo "2. Deploying contracts..."
 $COMPOSE up contract-deployer

@@ -14,9 +14,9 @@ spec:
         app: api-server
     spec:
       initContainers:
-        - name: wait-for-postgres
+        - name: wait-for-database
           image: busybox
-          command: ["sh", "-c", "until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done"]
+          command: ["sh", "-c", "until nc -z database 5432; do echo waiting for database; sleep 2; done"]
         - name: wait-for-valkey
           image: busybox
           command: ["sh", "-c", "until nc -z valkey 6379; do echo waiting for valkey; sleep 2; done"]
@@ -34,7 +34,7 @@ spec:
             - name: TOPICS
               value: "Transfer,Approval"
             - name: POSTGRES_HOST
-              value: postgres
+              value: database
             - name: POSTGRES_PORT
               value: "5432"
             - name: POSTGRES_DB

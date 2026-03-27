@@ -33,7 +33,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 export ETH_INDEXER_ENV_LOADED=1
 
-# Use local postgres credentials
+# Use local database credentials
 LOCAL_PG_USER="${POSTGRES_USER:-test}"
 LOCAL_PG_PASSWORD="${POSTGRES_PASSWORD:-0000}"
 LOCAL_PG_HOST="${POSTGRES_HOST:-localhost}"

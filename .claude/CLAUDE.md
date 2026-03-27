@@ -81,5 +81,4 @@ scripts/
 
 - @.claude/architecture.md — Indexing, Query, and CDC/Monitoring pipelines
 - @.claude/services.md — Shared libs, Indexer, API Server, Dashboard internals
-- @.claude/monitoring.md — Prometheus, Grafana, kafka-exporter setup
 - @.claude/kubernetes.md — Secrets, cluster scripts, apply order, port-forwards
