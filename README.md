@@ -1,355 +1,226 @@
 # eth-indexer
 
-A production-grade Ethereum event indexer that captures smart contract events and stores them in PostgreSQL for fast, structured querying.
+A production-grade Ethereum event indexer that captures smart contract events and stores them in PostgreSQL for fast, structured querying. Structured as a Go monorepo with three independent services and two shared libraries.
 
 ## Features
 
-- ✅ **Deterministic indexing** - Replaying blocks produces identical results
-- ✅ **Idempotent operations** - Document IDs are deterministic (txHash-logIndex)
-- ✅ **Reorg-safe** - Only indexes confirmed blocks (configurable depth)
-- ✅ **High throughput** - Bulk insertion with automatic block range chunking
-- ✅ **Search API** - RESTful API with flexible filtering
-- ✅ **Resumable** - Persists indexer state, safe to restart
-- ✅ **Real-time** - WebSocket-based block monitoring
-- ✅ **Redis caching** - Query result caching for improved performance
-- ✅ **Docker-ready** - Complete containerization with docker-compose
-- ✅ **Monitoring tools** - Real-time progress tracking
-- ✅ **Test suite** - Comprehensive JavaScript/Jest tests (69 tests)
+- **Deterministic indexing** - Replaying blocks produces identical results
+- **Idempotent operations** - Primary key is `(tx_hash, log_index)`; duplicates are silently ignored
+- **Reorg-safe** - Only indexes confirmed blocks (configurable depth)
+- **High throughput** - Bulk insertion with automatic block range chunking
+- **Search API** - RESTful API with flexible filtering and cursor-based pagination
+- **Resumable** - Persists indexer state per event, safe to restart
+- **Real-time** - WebSocket-based block monitoring
+- **Redis caching** - Query result caching with configurable TTL
+- **Real-time dashboard** - Kafka CDC + Server-Sent Events UI
+- **Docker-ready** - Complete containerization with Docker Compose
+- **Kubernetes-ready** - Full manifests for minikube/production deployment
+- **Monitoring** - Prometheus + Grafana + Kafka exporter
+
+## Repository Layout
+
+```
+libs/
+  common/       — shared types: EventRecord, ComparisonFilter[T], PagingOptions[CursorT]
+  config/       — shared helpers: PostgresOptions, LoadPostgresFromEnv, CreatePgConnPool
+services/
+  indexer/      — standalone Ethereum event indexer
+  api-server/   — standalone HTTP query service
+  dashboard/    — real-time UI with Kafka CDC and SSE
+monitoring/
+  prometheus/   — prometheus.yml scrape config
+  grafana/      — datasources, dashboard provider, dashboard JSON
+  debezium/     — register-connector.sh
+k8s/
+  namespace.yaml, secrets.yaml, gateway.yaml, external-services.yaml
+  kafka-connect/, dashboard/, indexer/, api-server/, monitoring/
+scripts/
+  k8s/          — cluster-up.sh, cluster-down.sh, test-cluster.sh
+  anvil/        — deploy-contracts.sh, wait-for-rpc.sh
+  test/         — setup-test-env.sh, teardown-test-env.sh
+  monitor.sh, psql.sh
+```
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Local Development with Docker Compose
 
-1. **Clone and configure:**
 ```bash
 git clone <repository>
 cd eth-indexer
-
-# Copy example indexer
-cp indexer.example.json indexer.json
+cp .env.example .env
+# Edit .env with your Ethereum RPC URL and contract config
 ```
 
-2. **Edit `config.json`:**
-```json
-{
-  "indexer": {
-    "rpc_url": "wss://mainnet.infura.io/ws/v3/YOUR_API_KEY",
-    "contract_addresses": [
-      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-    ],
-    "event_names": ["Transfer", "Approval"],
-    "confirmed_after": 12,
-    "offset_block_number": 24600000
-  }
-}
-```
-
-3. **Start all services:**
+Start all services:
 ```bash
-docker-compose up -d
+make local-up
+# or
+docker compose -f docker-compose.local.yml up -d
 ```
 
 Services started:
-- **PostgreSQL** - Event storage (port 5433)
-- **Valkey (Redis)** - Query cache (port 6379)
-- **eth-indexer** - Indexer + API (port 8080)
-- **Geth** (optional) - Local Ethereum node
+- **Anvil** - Local Ethereum node (port 8545)
+- **PostgreSQL** - Event storage (port 5434)
+- **Valkey (Redis)** - Query cache (port 6380)
+- **Kafka + Zookeeper** - Event streaming
+- **Kafka Connect + Debezium** - CDC connector (port 8083)
+- **indexer** - ERC20 event indexer
+- **indexer-staking** - StakingPool event indexer
+- **indexer-uniswap** - UniswapPool event indexer
+- **api-server** - HTTP query API (port 8082)
+- **dashboard** - Real-time event UI (port 8090)
+- **gateway** - Nginx reverse proxy (port 3003)
 
-4. **Monitor indexing progress:**
+Monitor indexing:
 ```bash
-./.scripts/monitor.sh
+./scripts/monitor.sh
 ```
 
-5. **Query events:**
+Query events:
 ```bash
-curl http://localhost:8080/search/Transfer | jq
+curl http://localhost:8082/search/Transfer | jq
 ```
 
-### Using Go Directly
+### Running Services Directly (Go)
 
-1. **Install dependencies:**
 ```bash
 go mod download
+make build-all
 ```
 
-2. **Configure (create config.json):**
-```json
-{
-  "indexer": {
-    "rpc_url": "wss://mainnet.infura.io/ws/v3/YOUR_API_KEY",
-    "contract_addresses": ["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"],
-    "event_names": ["Transfer"],
-    "confirmed_after": 12,
-    "offset_block_number": 24600000,
-    "status_file_path": "./state/indexer-state.json",
-    "abi": [...]
-  },
-  "postgres": {
-    "host": "localhost",
-    "port": 5432,
-    "database": "eth_indexer",
-    "user": "database",
-    "password": "database"
-  }
-}
-```
+Each service is configured via environment variables:
 
-3. **Run:**
 ```bash
-go run ./cmd/eth-indexer
+# Indexer
+ETHEREUM_RPC_URL=wss://mainnet.infura.io/ws/v3/YOUR_KEY \
+INDEXER_CONTRACT_ADDRESSES=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 \
+INDEXER_EVENT_NAMES=Transfer,Approval \
+INDEXER_ABI_PATH=./abi.json \
+POSTGRES_HOST=localhost POSTGRES_PORT=5432 \
+POSTGRES_DB=eth_indexer POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres \
+make run-indexer
+
+# API Server
+POSTGRES_HOST=localhost POSTGRES_PORT=5432 \
+POSTGRES_DB=eth_indexer POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres \
+REDIS_HOST=localhost REDIS_PORT=6379 \
+TOPICS=Transfer,Approval \
+make run-api-server
 ```
 
 ## Configuration
 
-### Complete config.json Structure
+All services are configured via **environment variables**. See `.env.example` for a full list.
 
-```json
-{
-  "indexer": {
-    "rpc_url": "wss://mainnet.infura.io/ws/v3/YOUR_KEY",
-    "contract_addresses": [
-      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "0xdAC17F958D2ee523a2206206994597C13D831ec7"
-    ],
-    "event_names": ["Transfer", "Approval"],
-    "confirmed_after": 12,
-    "offset_block_number": 24600000,
-    "status_file_path": "/var/lib/eth-indexer/state/indexer-state.json",
-    "abi": [
-      {
-        "anonymous": false,
-        "inputs": [
-          {"indexed": true, "name": "from", "type": "address"},
-          {"indexed": true, "name": "to", "type": "address"},
-          {"indexed": false, "name": "value", "type": "uint256"}
-        ],
-        "name": "Transfer",
-        "type": "event"
-      }
-    ]
-  },
-  "postgres": {
-    "host": "database",
-    "port": 5432,
-    "database": "eth_indexer",
-    "user": "database",
-    "password": "database",
-    "max_connections": 20
-  },
-  "redis": {
-    "host": "valkey",
-    "port": 6379,
-    "password": "",
-    "db": 0
-  },
-  "api": {
-    "port": 8080,
-    "ttl": 3600
-  }
-}
-```
+### Indexer Environment Variables
 
-### Configuration Parameters
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ETHEREUM_RPC_URL` | Yes | - | Ethereum WebSocket RPC endpoint (`wss://`) |
+| `INDEXER_CONTRACT_ADDRESSES` | Yes | - | Comma-separated contract addresses |
+| `INDEXER_EVENT_NAMES` | Yes | - | Comma-separated event names (e.g. `Transfer,Approval`) |
+| `INDEXER_ABI_PATH` | Yes | - | Path to ABI JSON file |
+| `INDEXER_CONFIRMED_AFTER` | No | `12` | Blocks to wait before indexing (reorg protection) |
+| `INDEXER_OFFSET_BLOCK_NUMBER` | No | `0` | Starting block number |
+| `INDEXER_STATUS_FILE_PATH` | No | `/var/lib/indexer/state.json` | Path to persist indexer state |
+| `POSTGRES_HOST` | Yes | - | PostgreSQL host |
+| `POSTGRES_PORT` | No | `5432` | PostgreSQL port |
+| `POSTGRES_DB` | Yes | - | Database name |
+| `POSTGRES_USER` | Yes | - | Database user |
+| `POSTGRES_PASSWORD` | Yes | - | Database password |
+| `POSTGRES_MAX_CONNECTIONS` | No | `10` | Max connection pool size |
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `rpc_url` | Yes | - | Ethereum WebSocket RPC endpoint |
-| `contract_addresses` | Yes | - | Array of contract addresses to monitor |
-| `event_names` | Yes | - | Event names to index |
-| `confirmed_after` | No | `12` | Blocks to wait before indexing (reorg protection) |
-| `offset_block_number` | No | `0` | Starting block number |
-| `status_file_path` | No | - | Path to persist indexer state |
-| `abi` | Yes | - | Contract ABI (events section) |
+### API Server Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `API_PORT` | No | `8080` | HTTP server port |
+| `API_TTL` | No | `60` | Redis cache TTL in seconds |
+| `TOPICS` | Yes | - | Comma-separated allowed event topics |
+| `REDIS_HOST` | Yes | - | Redis/Valkey host |
+| `REDIS_PORT` | No | `6379` | Redis port |
+| `REDIS_PASSWORD` | No | - | Redis password |
+| `REDIS_DB` | No | `0` | Redis database index |
+| `POSTGRES_*` | Yes | - | Same as indexer |
+
+### Dashboard Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `KAFKA_BOOTSTRAP_SERVERS` | No | `kafka:9092` | Kafka broker address |
+| `SOURCE_TOPIC` | No | `eth-indexer.public.event_records` | Debezium CDC topic |
+| `TOPICS` | No | `Transfer,Approval` | Event names to display |
+| `UI_PORT` | No | `8090` | Dashboard HTTP port |
+| `API_SERVER_URL` | No | `http://api-server` | API server base URL |
 
 ## API Endpoints
 
+Full API documentation: [API.md](API.md)
+
 ### Health Check
-```bash
-GET /health
 ```
-
-Response:
-```
-OK
-```
-
-### Indexer Status
-```bash
-GET /status
-```
-
-Response:
-```json
-{
-  "Transfer": 24633142,
-  "Approval": 24633142
-}
+GET /health  →  200 OK
 ```
 
 ### Search Events
-
-```bash
-GET /search/{topic}
+```
+GET /search/{topic}?[filters]
 ```
 
-**Topics:** `Transfer`, `Approval`, or any configured event name
-
-#### Example: Get all Transfer events
-```bash
-curl http://localhost:8080/search/Transfer | jq
-```
-
-Response:
+**Response:**
 ```json
 {
   "count": 150,
   "result": [
     {
+      "topic": "Transfer",
       "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "tx_hash": "0x023814f84d48c6796e4c6e458f7f2ef1ac074031fd579fc7af2be97cfc14a1b1",
-      "block_hash": "0xf4c508c206d8aeb3ded5bdf028999a341df52a674356b3ea119ddfb9a6a61ee9",
+      "tx_hash": "0x023814...",
+      "block_hash": "0xf4c508...",
       "block_number": 24633117,
       "log_index": 0,
       "data": {
-        "from": "0x0000000000000000000000009250e9ab0ffe3590629746843bb39425c4b2e3da",
-        "to": "0x000000000000000000000000f8e16ecc6357c14726cf9bebbce0049b7c93fc63",
+        "from": "0x9250e9...",
+        "to": "0xf8e16e...",
         "value": 500
       },
       "timestamp": "2026-03-11T08:47:18.630617Z"
     }
-  ]
+  ],
+  "next_cursor": "..."
 }
 ```
 
 ### Filter Parameters
 
-All filters are passed as query parameters using GET requests.
+| Parameter | Format | Example |
+|-----------|--------|---------|
+| `contract_address` | Comma-separated addresses | `?contract_address=0xA0b8...` |
+| `tx_hash` | Exact match | `?tx_hash=0x0238...` |
+| `block_hash` | Exact match | `?block_hash=0xf4c5...` |
+| `log_index` | Comma-separated integers | `?log_index=0,1,2` |
+| `block_number` | JSON comparison object | `?block_number={"gte":100,"lte":200}` |
+| `timestamp` | JSON comparison object | `?timestamp={"gte":"2026-01-01T00:00:00Z"}` |
+| `data` | JSON containment | `?data={"from":"0x..."}` |
 
-#### Contract Address Filter
+Comparison operators: `gte`, `lte`, `gt`, `lt`, `eq`
+
+**Examples:**
 ```bash
-# Single contract
-curl "http://localhost:8080/search/Transfer?contract_address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-
-# Multiple contracts (comma-separated)
-curl "http://localhost:8080/search/Transfer?contract_address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,0xdAC17F958D2ee523a2206206994597C13D831ec7"
-```
-
-#### Block Number Filter
-
-Use JSON-encoded comparison operators:
-
-```bash
-# Greater than or equal (gte)
-curl --get "http://localhost:8080/search/Transfer" \
-  --data-urlencode 'block_number={"gte":24633120}'
-
-# Less than or equal (lte)
-curl --get "http://localhost:8080/search/Transfer" \
-  --data-urlencode 'block_number={"lte":24633130}'
-
-# Range (gte + lte)
-curl --get "http://localhost:8080/search/Transfer" \
+# Block range
+curl --get http://localhost:8082/search/Transfer \
   --data-urlencode 'block_number={"gte":24633120,"lte":24633130}'
 
-# Exact match (eq)
-curl --get "http://localhost:8080/search/Transfer" \
-  --data-urlencode 'block_number={"eq":24633120}'
-```
-
-Supported operators: `gte`, `lte`, `gt`, `lt`, `eq`
-
-#### Transaction Hash Filter
-```bash
-curl "http://localhost:8080/search/Transfer?tx_hash=0x023814f84d48c6796e4c6e458f7f2ef1ac074031fd579fc7af2be97cfc14a1b1"
-```
-
-#### Block Hash Filter
-```bash
-curl "http://localhost:8080/search/Transfer?block_hash=0xf4c508c206d8aeb3ded5bdf028999a341df52a674356b3ea119ddfb9a6a61ee9"
-```
-
-#### Log Index Filter
-```bash
-# Single index
-curl "http://localhost:8080/search/Transfer?log_index=0"
-
-# Multiple indices (comma-separated)
-curl "http://localhost:8080/search/Transfer?log_index=0,1,2"
-```
-
-#### Combined Filters
-```bash
-curl --get "http://localhost:8080/search/Transfer" \
+# Contract + block range + log index
+curl --get http://localhost:8082/search/Transfer \
   --data-urlencode 'contract_address=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' \
-  --data-urlencode 'block_number={"gte":24633120,"lte":24633130}' \
+  --data-urlencode 'block_number={"gte":24633120}' \
   --data-urlencode 'log_index=0'
-```
 
-## Utility Scripts
-
-### Monitor Indexing Progress
-```bash
-./.scripts/monitor.sh
-```
-
-Real-time monitoring showing:
-- Current block for each event type
-- Blocks indexed per minute
-- Progress indicators
-
-### Connect to PostgreSQL
-```bash
-# Interactive session
-./.scripts/psql.sh
-
-# Execute query
-./.scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
-
-# List tables
-./.scripts/psql.sh -c "\dt"
-
-# Show recent events
-./.scripts/psql.sh -c "SELECT * FROM event_records ORDER BY timestamp DESC LIMIT 10;"
-```
-
-## Testing
-
-### JavaScript Test Suite (Jest)
-
-Comprehensive test suite with 69 tests covering all API functionality.
-
-```bash
-cd test
-npm install
-npm test
-```
-
-**Test Coverage:**
-- Health and status endpoints (9 tests)
-- Search functionality (16 tests)
-- All filter types (15 tests)
-- Error handling (19 tests)
-- Performance benchmarks (10 tests)
-
-**Run specific test suites:**
-```bash
-npm run test:health       # Health tests only
-npm run test:search       # Search tests only
-npm run test:filters      # Filter tests only
-npm run test:errors       # Error handling tests only
-npm run test:performance  # Performance tests only
-```
-
-**Coverage report:**
-```bash
-npm run test:coverage
-```
-
-See [test/README.md](test/README.md) for detailed testing documentation.
-
-### Go Tests
-```bash
-go test ./...
+# JSONB data filter
+curl --get http://localhost:8082/search/Transfer \
+  --data-urlencode 'data={"from":"0x9250e9ab0ffe3590629746843bb39425c4b2e3da"}'
 ```
 
 ## Architecture
@@ -385,7 +256,7 @@ flowchart LR
     CLIENT(["HTTP Client"])
 
     subgraph API["API Layer"]
-        SRV["HTTP Server\n:8080"]
+        SRV["HTTP Server"]
         SS["SearchService\ncache-aside"]
     end
 
@@ -403,117 +274,152 @@ flowchart LR
     SRV -- "JSON" --> CLIENT
 ```
 
+### CDC / Dashboard Pipeline
+
+```mermaid
+flowchart LR
+    PG[("PostgreSQL\nevent_records")]
+    DZ["Debezium\nKafka Connect"]
+    KF[("Kafka\nCDC topic")]
+    DS["Dashboard Service\nKafka consumer"]
+    SSE["SSE Hub\n/events endpoint"]
+    UI(["Browser\nReal-time UI"])
+
+    PG -- "WAL changes" --> DZ
+    DZ -- "CDC messages" --> KF
+    KF -- "consume" --> DS
+    DS -- "broadcast" --> SSE
+    SSE -- "Server-Sent Events" --> UI
+```
+
 ### Key Components
 
-- **Indexer Service**: Manages WebSocket subscription and broadcasts new block headers to all workers
-- **Workers**: Per-event goroutines; calculate confirmed block range and dispatch scan requests
-- **Scanner**: Calls `eth_getLogs` RPC, validates topic0, and ABI-decodes indexed + non-indexed fields
+- **Indexer Service**: Subscribes to Ethereum block headers via WebSocket, fans out to per-event scanner goroutines, bulk-inserts decoded records into PostgreSQL
+- **Scanner**: Calls `eth_getLogs` RPC, validates topic0, ABI-decodes indexed topics and non-indexed data fields
+- **API Server**: RESTful API with cache-aside pattern; Squirrel-built queries with full filter support
+- **Dashboard**: Consumes Debezium CDC messages from Kafka and streams to browser clients via SSE
 - **Storage**: PostgreSQL with composite primary key `(tx_hash, log_index)` for idempotent bulk inserts
-- **Cache**: Redis/Valkey — deterministic key from `xxhash64(msgpack(filters))`, configurable TTL
+- **Cache**: Redis/Valkey with deterministic key from query parameters, configurable TTL
 - **State**: JSON file tracking last indexed block per event; enables safe resumption after restarts
-- **API Server**: RESTful API with flexible filtering (block range, contract address, JSONB data, etc.)
 
 ## Database Schema
 
-### event_records Table
-
 ```sql
 CREATE TABLE event_records (
-    topic TEXT NOT NULL,
-    contract_address VARCHAR(42) NOT NULL,
-    tx_hash VARCHAR(66) NOT NULL,
-    block_hash VARCHAR(66) NOT NULL,
-    block_number BIGINT NOT NULL,
-    log_index BIGINT NOT NULL,
-    data JSONB NOT NULL DEFAULT '{}',
-    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    topic            TEXT           NOT NULL,
+    contract_address VARCHAR(42)    NOT NULL,
+    tx_hash          VARCHAR(66)    NOT NULL,
+    block_hash       VARCHAR(66)    NOT NULL,
+    block_number     BIGINT         NOT NULL,
+    log_index        BIGINT         NOT NULL,
+    data             JSONB          NOT NULL DEFAULT '{}',
+    timestamp        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY (tx_hash, log_index)
 );
 ```
 
-### Indexes
+**Indexes:**
+- `idx_event_records_topic` — topic filtering
+- `idx_event_records_contract_address` — contract-specific queries
+- `idx_event_records_block_number` — block range queries
+- `idx_event_records_block_hash` — block-specific queries
+- `idx_event_records_timestamp` — time-based queries
+- `idx_event_records_data` (GIN) — JSONB containment queries
+- `idx_event_records_topic_block` — composite `(topic, block_number DESC)`
+- `idx_event_records_topic_contract` — composite `(topic, contract_address)`
 
-- `idx_event_records_topic` - Fast filtering by event type
-- `idx_event_records_contract_address` - Contract-specific queries
-- `idx_event_records_block_number` - Block range queries
-- `idx_event_records_timestamp` - Time-based queries
-- `idx_event_records_data` (GIN) - JSONB field queries
-- `idx_event_records_topic_block` - Combined topic + block queries
+## Utility Scripts
 
-## Document ID Format
+```bash
+# Monitor indexing progress
+./scripts/monitor.sh
 
-Documents use a composite primary key for idempotency:
+# PostgreSQL interactive session
+./scripts/psql.sh
 
+# Execute a query
+./scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
+
+# Show recent events
+./scripts/psql.sh -c "SELECT * FROM event_records ORDER BY timestamp DESC LIMIT 10;"
 ```
-PRIMARY KEY (tx_hash, log_index)
+
+## Kubernetes Deployment
+
+Full guide: [k8s/README.md](k8s/README.md)
+
+```bash
+# Start minikube, build images, and apply all manifests
+make cluster-up
+# or
+./scripts/k8s/cluster-up.sh
+
+# Tear down
+make cluster-down
 ```
 
-This prevents duplicate indexing and allows safe re-indexing of blocks.
+Apply order:
+1. `namespace.yaml`
+2. `secrets.yaml`
+3. `external-services.yaml`
+4. `kafka-connect/` (Debezium connector)
+5. `indexer/`
+6. `api-server/`
+7. `dashboard/`
+8. `monitoring/`
+9. `gateway.yaml`
 
-## Performance
+## Build & Test
 
-### Benchmarks
+```bash
+# Build all services
+make build-all
 
-- **API Response Time**: 14ms average
-- **Concurrent Requests**: Handles 20+ concurrent requests
-- **Indexing Speed**: ~2 blocks per 15 seconds (real-time)
-- **Query Performance**: <500ms for filtered queries
+# Run Go unit tests
+make test-unit
 
-### Automatic Block Range Chunking
+# Run end-to-end tests (requires local Docker Compose)
+make test-e2e
 
-The indexer automatically handles high-volume contracts:
-- Starts with 50-block chunks
-- Reduces chunk size when hitting RPC limits
-- Works with any RPC provider's rate limits
-- Handles contracts with 10,000+ events per block
+# Setup / teardown test environment
+./scripts/test/setup-test-env.sh
+./scripts/test/teardown-test-env.sh
 
-## RPC Provider Recommendations
+# Lint
+make lint
 
-### For Production
-- **Alchemy** (recommended): Higher rate limits, WebSocket support
-- **Infura**: Reliable, WebSocket support
-- **QuickNode**: Fast, dedicated nodes available
-
-### For Development
-- **Public nodes**: Free but strict rate limits
-- **Local Geth**: Best for testing, no rate limits
-
-### WebSocket Required
-
-The indexer uses `SubscribeNewHead` for real-time block monitoring, which requires WebSocket support. HTTP-only endpoints will not work.
+# Tidy all Go modules
+make tidy-all
+```
 
 ## Production Considerations
 
 ### 1. Confirmation Depth
-Set `confirmed_after` based on chain finality:
+Set `INDEXER_CONFIRMED_AFTER` based on chain finality:
 - **Ethereum mainnet**: 12+ blocks
-- **L2s (Optimism, Arbitrum)**: 1-5 blocks
-- **Sidechains**: Varies by chain
+- **L2s (Optimism, Arbitrum)**: 1–5 blocks
+- **Sidechains**: Varies
 
 ### 2. Starting Block
-- Set `offset_block_number` to recent block for initial testing
+- Set `INDEXER_OFFSET_BLOCK_NUMBER` to a recent block for initial testing
 - Start from block 0 only if you need complete history
 - Consider backfilling separately for large ranges
 
-### 3. Database Tuning
-```sql
--- Increase shared buffers for better performance
--- In postgresql.conf:
-shared_buffers = 256MB
-effective_cache_size = 1GB
-```
+### 3. High-Volume Contracts
+The indexer automatically handles high event rates:
+- Starts with 50-block chunks
+- Reduces chunk size when hitting RPC limits
+- Works with any RPC provider's rate limits
 
-### 4. Monitoring
-- Use `./scripts/monitor.sh` for real-time progress
-- Monitor PostgreSQL connections: `./scripts/psql.sh -c "\conninfo"`
-- Check Docker logs: `docker-compose logs -f indexer`
+### 4. WebSocket Required
+The indexer uses `SubscribeNewHead` for real-time block monitoring. HTTP-only RPC endpoints will not work.
 
-### 5. High-Volume Contracts
-For contracts like USDC/USDT with thousands of events per block:
-- The chunking feature handles this automatically
-- Consider indexing fewer contract addresses per instance
-- Use Redis caching to reduce database load
+### 5. RPC Provider Recommendations
+- **Alchemy** (recommended): Higher rate limits, WebSocket support
+- **Infura**: Reliable, WebSocket support
+- **QuickNode**: Fast, dedicated nodes available
+- **Local Geth/Anvil**: Best for development, no rate limits
 
 ### 6. Error Handling
 The indexer automatically retries on:
@@ -521,96 +427,10 @@ The indexer automatically retries on:
 - Rate limit errors (with exponential backoff)
 - Temporary database issues
 
-Fatal errors that require intervention:
+Fatal errors requiring intervention:
 - Invalid ABI configuration
-- Database connection failures
+- Unrecoverable database failures
 - WebSocket subscription failures
-
-## Troubleshooting
-
-### Indexer Not Processing Blocks
-
-1. Check RPC connection:
-```bash
-docker-compose logs indexer | grep "Starting eth-indexer"
-```
-
-2. Verify WebSocket support:
-```bash
-# Should start with wss://
-curl http://localhost:8080/status
-```
-
-3. Check for errors:
-```bash
-docker-compose logs indexer | grep -i error
-```
-
-### No Events Being Indexed
-
-1. Verify contract addresses and event names in config
-2. Check if blocks have been scanned:
-```bash
-curl http://localhost:8080/status
-```
-3. Query database directly:
-```bash
-./.scripts/psql.sh -c "SELECT COUNT(*) FROM event_records;"
-```
-
-### Performance Issues
-
-1. Check database indexes:
-```bash
-./.scripts/psql.sh -c "\di"
-```
-
-2. Monitor query performance:
-```bash
-./.scripts/psql.sh -c "SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
-```
-
-3. Verify Redis is running:
-```bash
-docker-compose ps valkey
-```
-
-## Development
-
-### Project Structure
-```
-eth-indexer/
-├── api/              # API handlers and server
-├── cmd/eth-indexer/  # Main application entry
-├── config/           # Configuration loading
-├── core/             # Core domain types and interfaces
-├── scanner/          # Event scanning and ABI decoding
-├── service/          # Business logic (indexer, search)
-├── storage/          # Database implementations
-├── scripts/          # Utility scripts
-├── test/             # JavaScript test suite
-├── migrations/       # Database migrations
-└── state/            # Indexer state persistence
-```
-
-### Build
-```bash
-make build
-# or
-go build -o bin/eth-indexer ./cmd/eth-indexer
-```
-
-### Docker Build
-```bash
-docker build -t eth-indexer:latest .
-```
-
-### Adding New Events
-
-1. Update `config.json` with new event name
-2. Add event definition to ABI array
-3. Restart indexer
-4. New events will be indexed automatically
 
 ## License
 
@@ -618,15 +438,7 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality
 4. Submit a pull request
-
-## Support
-
-For issues and questions:
-- Open an issue on GitHub
-- Check existing issues for solutions
-- Review the troubleshooting section above
