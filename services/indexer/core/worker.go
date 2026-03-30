@@ -59,7 +59,7 @@ func (w *Worker) IndexBlocks(ctx context.Context, blockNumber, confirmedAfter ui
 				return
 			}
 
-			if err = w.eventRecordsStorage.SaveAll(ctx, sc.EventName(), records); err != nil {
+			if err = w.eventRecordsStorage.SaveAll(ctx, records); err != nil {
 				log.Printf("[Worker:%s/%s] Failed to save records: %v", w.name, sc.EventName(), err)
 				return
 			}

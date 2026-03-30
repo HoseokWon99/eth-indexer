@@ -25,7 +25,6 @@ type Indexer struct {
 func NewIndexer(
 	eth *ethclient.Client,
 	workers []*Worker,
-	eventRecordsStorage EventRecordsStorage,
 	stateStorage StateStorage,
 	confirmedAfter uint64,
 ) *Indexer {

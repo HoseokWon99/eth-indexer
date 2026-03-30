@@ -28,28 +28,23 @@ services:
       - --mnemonic
       - "test test test test test test test test test test test junk"
 
-  # Postgres - Test database
-  postgres:
-    image: postgres:16-alpine
-    container_name: eth-indexer-test-database
+  # MongoDB - Test database
+  mongodb:
+    image: mongo:7
+    container_name: eth-indexer-test-mongo
     environment:
-      POSTGRES_DB: eth_indexer
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
+      MONGO_INITDB_ROOT_USERNAME: test
+      MONGO_INITDB_ROOT_PASSWORD: "0000"
+      MONGO_INITDB_DATABASE: eth_indexer
     ports:
-      - "5434:5432"
+      - "27017:27017"
     networks:
       - eth-indexer-test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U test -d eth_indexer"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
-    command: >
-      postgres
-        -c wal_level=logical
-        -c max_replication_slots=5
-        -c max_wal_senders=5
     # No volumes - fresh state on each run
 
   # Valkey - Test cache
@@ -116,7 +111,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      postgres:
+      mongodb:
         condition: service_healthy
     ports:
       - "8083:8083"
@@ -145,9 +140,11 @@ services:
       kafka-connect:
         condition: service_healthy
     environment:
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
-      POSTGRES_DB: eth_indexer
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_USER: test
+      MONGODB_PASSWORD: "0000"
+      MONGODB_DB: eth_indexer
     volumes:
       - ./debezium:/etc/debezium
     entrypoint: ["/bin/sh", "/etc/debezium/register-connector.sh"]
@@ -217,7 +214,7 @@ services:
       dockerfile: services/indexer/Dockerfile
     container_name: eth-indexer-test-indexer
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
       deploy-contracts:
         condition: service_completed_successfully
@@ -230,11 +227,11 @@ services:
       INDEXER_OFFSET_BLOCK_NUMBER: 0
       INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/test-state/status.json
       API_PORT: "8080"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_DB: eth_indexer
+      MONGODB_USER: test
+      MONGODB_PASSWORD: "0000"
     volumes:
       - ./erc20-abi.test.json:/etc/eth-indexer/abi.json:ro
       - ./volume/indexer:/var/lib/eth-indexer
@@ -255,7 +252,7 @@ services:
       dockerfile: services/indexer/Dockerfile
     container_name: eth-indexer-test-indexer-staking
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
       deploy-staking-contracts:
         condition: service_completed_successfully
@@ -268,11 +265,11 @@ services:
       INDEXER_OFFSET_BLOCK_NUMBER: 0
       INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/staking-state/status.json
       API_PORT: "8080"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_DB: eth_indexer
+      MONGODB_USER: test
+      MONGODB_PASSWORD: "0000"
     volumes:
       - ./test/abi/StakingPool.json:/etc/eth-indexer/abi.json:ro
       - ./volume/indexer-staking:/var/lib/eth-indexer
@@ -306,11 +303,11 @@ services:
       INDEXER_OFFSET_BLOCK_NUMBER: 0
       INDEXER_STATUS_FILE_PATH: /var/lib/eth-indexer/uniswap-state/status.json
       API_PORT: "8080"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_DB: eth_indexer
+      MONGODB_USER: test
+      MONGODB_PASSWORD: "0000"
     volumes:
       - ./test/abi/UniswapPool.json:/etc/eth-indexer/abi.json:ro
       - ./volume/indexer-uniswap:/var/lib/eth-indexer
@@ -387,18 +384,18 @@ services:
       dockerfile: services/api-server/Dockerfile
     container_name: eth-indexer-test-api-server
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
       valkey:
         condition: service_healthy
     environment:
       API_PORT: "8081"
       API_TTL: "300"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-      POSTGRES_DB: eth_indexer
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: "0000"
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: "27017"
+      MONGODB_DB: eth_indexer
+      MONGODB_USER: test
+      MONGODB_PASSWORD: "0000"
       REDIS_HOST: valkey
       REDIS_PORT: "6379"
       TOPICS: Transfer,Approval,Staked,Withdrawn,RewardPaid,RewardAdded,Mint,Burn,Swap,Sync
@@ -423,7 +420,7 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SOURCE_TOPIC: eth-indexer.public.event_records
+      SOURCE_TOPIC: eth-indexer.eth_indexer.event_records
       TOPICS: Transfer,Approval,Staked,Withdrawn,RewardPaid,RewardAdded,Mint,Burn,Swap,Sync
       UI_PORT: "8090"
       API_SERVER_URL: http://api-server:8081

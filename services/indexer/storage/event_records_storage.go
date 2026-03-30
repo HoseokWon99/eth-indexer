@@ -33,7 +33,7 @@ func NewPostgresEventRecordsStorage(pool *pgx.ConnPool) *PostgresEventRecordsSto
 	return &PostgresEventRecordsStorage{pool: pool}
 }
 
-func (ers *PostgresEventRecordsStorage) SaveAll(ctx context.Context, topic string, records []common.EventRecord) error {
+func (ers *PostgresEventRecordsStorage) SaveAll(ctx context.Context, records []common.EventRecord) error {
 	sort.Slice(records, func(i, j int) bool {
 		if records[i].BlockNumber != records[j].BlockNumber {
 			return records[i].BlockNumber < records[j].BlockNumber
@@ -42,8 +42,8 @@ func (ers *PostgresEventRecordsStorage) SaveAll(ctx context.Context, topic strin
 	})
 	batch := ers.pool.BeginBatch()
 	params := make([]interface{}, 8)
-	params[0] = topic
 	for _, record := range records {
+		params[0] = record.Topic
 		params[1] = record.ContractAddress
 		params[2] = record.TxHash
 		params[3] = record.BlockHash

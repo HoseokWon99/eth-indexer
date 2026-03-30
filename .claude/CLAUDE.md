@@ -1,11 +1,11 @@
 # eth-indexer
 
-This system indexes specific Ethereum smart contract events and stores them in PostgreSQL for fast, structured querying. It is structured as a **monorepo** with three independent services and two shared libraries.
+This system indexes specific Ethereum smart contract events and stores them in MongoDB for fast, structured querying. It is structured as a **monorepo** with three independent services and two shared libraries.
 
 ## Skills
 - Languages: Go
-- Libraries: go-ethereum, pgx, squirrel, go-redis, kafka-go
-- Storage: PostgreSQL, Redis/Valkey (cache), Kafka
+- Libraries: go-ethereum, pgx (legacy Postgres impl), mongo-driver/v2, squirrel, go-redis, kafka-go
+- Storage: MongoDB (primary), Redis/Valkey (cache), Kafka
 - Deployment: Docker Compose (local dev), Kubernetes / minikube (production)
 
 ## Repository Layout
@@ -48,7 +48,7 @@ scripts/
 - Filters logs by contract address + event topic0
 - Decodes ABI-encoded data (indexed topics + non-indexed data)
 - Normalizes values for storage
-- Bulk inserts records into PostgreSQL
+- Bulk upserts records into MongoDB (idempotent via `$setOnInsert`)
 - Exposes search API with Redis cache-aside
 
 ## Key Design Principles
@@ -60,13 +60,11 @@ scripts/
 
 ## Storage Strategy
 
-- Primary key: `(tx_hash, log_index)` — uniquely identifies each event log
+- Document `_id`: `"{tx_hash}:{log_index}"` — uniquely identifies each event log
 - Confirmed-only indexing: `safeBlock = latestBlock - confirmedAfter`
-- Immutable documents — no rollback required
-- JSONB `data` column stores all decoded event parameters
-- Accepts filters: `contract_address`, `tx_hash`, `block_hash`, `block_number`, `log_index`, `timestamp`, `data`
-- Comparison filters (`gte`, `lte`, `gt`, `lt`, `eq`) on `block_number` and `timestamp`
-- JSONB containment (`@>`) for `data` field queries
+- Immutable documents — no rollback required; upsert uses `$setOnInsert` (idempotent)
+- `data` field stores all decoded event parameters
+- `topic` field is sourced from `record.Topic` (not passed as a separate argument)
 - Results cached in Redis with configurable TTL
 
 ## Operational Characteristics

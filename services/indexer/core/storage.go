@@ -16,5 +16,5 @@ type StateStorage interface {
 }
 
 type EventRecordsStorage interface {
-	SaveAll(ctx context.Context, topic string, records []common.EventRecord) error
+	SaveAll(ctx context.Context, records []common.EventRecord) error
 }

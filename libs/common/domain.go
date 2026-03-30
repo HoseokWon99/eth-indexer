@@ -4,6 +4,7 @@ import "time"
 
 type EventRecord struct {
 	Topic           string                 `json:"topic"`
+	Signature       string                 `json:"signature"`
 	ContractAddress string                 `json:"contract_address"`
 	TxHash          string                 `json:"tx_hash"`
 	BlockHash       string                 `json:"block_hash"`

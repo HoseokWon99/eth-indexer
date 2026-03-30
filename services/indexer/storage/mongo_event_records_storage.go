@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"sort"
 
 	"eth-indexer.dev/libs/common"
@@ -19,37 +18,65 @@ func NewMongoEventRecordsStorage(col *mongo.Collection) *MongoEventRecordsStorag
 	return &MongoEventRecordsStorage{col: col}
 }
 
-// SaveAll bulk-upserts records using $setOnInsert + upsert:true, matching the
-// idempotent behaviour of the PostgreSQL ON CONFLICT DO NOTHING approach.
-// The topic parameter is ignored because record.Topic already carries the value.
-func (s *MongoEventRecordsStorage) SaveAll(ctx context.Context, _ string, records []common.EventRecord) error {
+// SaveAll groups records by topic and appends them as children to a per-topic
+// parent document: { _id: topic, topic, signature, children: [...] }.
+// The parent document is created on first insert via $setOnInsert; subsequent
+// calls push new children without touching the parent fields.
+func (s *MongoEventRecordsStorage) SaveAll(ctx context.Context, records []common.EventRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
-	sort.Slice(records, func(i, j int) bool {
-		if records[i].BlockNumber != records[j].BlockNumber {
-			return records[i].BlockNumber < records[j].BlockNumber
-		}
-		return records[i].LogIndex < records[j].LogIndex
-	})
 
-	models := make([]mongo.WriteModel, 0, len(records))
+	// Group and sort records by topic.
+	type group struct {
+		signature string
+		records   []common.EventRecord
+	}
+	groups := make(map[string]*group)
 	for _, r := range records {
-		id := fmt.Sprintf("%s:%d", r.TxHash, r.LogIndex)
-		doc := bson.D{
-			{Key: "_id", Value: id},
-			{Key: "topic", Value: r.Topic},
-			{Key: "contract_address", Value: r.ContractAddress},
-			{Key: "tx_hash", Value: r.TxHash},
-			{Key: "block_hash", Value: r.BlockHash},
-			{Key: "block_number", Value: r.BlockNumber},
-			{Key: "log_index", Value: r.LogIndex},
-			{Key: "data", Value: r.Data},
-			{Key: "timestamp", Value: r.Timestamp},
+		g, ok := groups[r.Topic]
+		if !ok {
+			g = &group{signature: r.Signature}
+			groups[r.Topic] = g
+		}
+		g.records = append(g.records, r)
+	}
+	for _, g := range groups {
+		sort.Slice(g.records, func(i, j int) bool {
+			if g.records[i].BlockNumber != g.records[j].BlockNumber {
+				return g.records[i].BlockNumber < g.records[j].BlockNumber
+			}
+			return g.records[i].LogIndex < g.records[j].LogIndex
+		})
+	}
+
+	models := make([]mongo.WriteModel, 0, len(groups))
+	for topic, g := range groups {
+		children := make(bson.A, 0, len(g.records))
+		for _, r := range g.records {
+			children = append(children, bson.D{
+				{Key: "contract_address", Value: r.ContractAddress},
+				{Key: "tx_hash", Value: r.TxHash},
+				{Key: "block_hash", Value: r.BlockHash},
+				{Key: "block_number", Value: r.BlockNumber},
+				{Key: "log_index", Value: r.LogIndex},
+				{Key: "data", Value: r.Data},
+				{Key: "timestamp", Value: r.Timestamp},
+			})
 		}
 		models = append(models, mongo.NewUpdateOneModel().
-			SetFilter(bson.D{{Key: "_id", Value: id}}).
-			SetUpdate(bson.D{{Key: "$setOnInsert", Value: doc}}).
+			SetFilter(bson.D{{Key: "_id", Value: topic}}).
+			SetUpdate(bson.D{
+				{Key: "$setOnInsert", Value: bson.D{
+					{Key: "topic", Value: topic},
+					{Key: "signature", Value: g.signature},
+				}},
+				{Key: "$push", Value: bson.D{
+					{Key: "children", Value: bson.D{
+						{Key: "$each", Value: children},
+					}},
+				}},
+			}).
 			SetUpsert(true))
 	}
 
