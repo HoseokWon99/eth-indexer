@@ -25,10 +25,12 @@ type RedisOptions struct {
 }
 
 type Options struct {
-	API      *APIOptions
-	Postgres *config.PostgresOptions
-	Redis    *RedisOptions
-	Topics   []string
+	API         *APIOptions
+	Postgres    *config.PostgresOptions
+	Mongo       *config.MongoOptions
+	Redis       *RedisOptions
+	Topics      []string
+	StorageType string // "postgres" (default) or "mongo"
 }
 
 func LoadConfig() (*Options, error) {
@@ -45,10 +47,12 @@ func LoadConfig() (*Options, error) {
 		return nil, err
 	}
 	return &Options{
-		API:      apiOpts,
-		Postgres: pgOpts,
-		Redis:    redisOps,
-		Topics:   loadTopics(),
+		API:         apiOpts,
+		Postgres:    pgOpts,
+		Mongo:       config.LoadMongoFromEnv(),
+		Redis:       redisOps,
+		Topics:      loadTopics(),
+		StorageType: config.GetEnv("STORAGE_TYPE", "postgres"),
 	}, nil
 }
 

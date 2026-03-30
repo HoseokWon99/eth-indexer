@@ -13,30 +13,28 @@ import (
 )
 
 type Indexer struct {
-	eth                 *ethclient.Client
-	channel             chan *types.Header
-	scanners            []Scanner
-	eventRecordsStorage EventRecordsStorage
-	stateStorage        StateStorage
-	confirmedAfter      uint64
-	sub                 ethereum.Subscription
-	mu                  sync.RWMutex
+	eth            *ethclient.Client
+	channel        chan *types.Header
+	workers        []*Worker
+	stateStorage   StateStorage
+	confirmedAfter uint64
+	sub            ethereum.Subscription
+	mu             sync.RWMutex
 }
 
 func NewIndexer(
 	eth *ethclient.Client,
-	scanners []Scanner,
+	workers []*Worker,
 	eventRecordsStorage EventRecordsStorage,
 	stateStorage StateStorage,
 	confirmedAfter uint64,
 ) *Indexer {
 	return &Indexer{
-		eth:                 eth,
-		channel:             make(chan *types.Header),
-		scanners:            scanners,
-		eventRecordsStorage: eventRecordsStorage,
-		stateStorage:        stateStorage,
-		confirmedAfter:      confirmedAfter,
+		eth:            eth,
+		channel:        make(chan *types.Header),
+		workers:        workers,
+		stateStorage:   stateStorage,
+		confirmedAfter: confirmedAfter,
 	}
 }
 
@@ -89,47 +87,12 @@ func (ix *Indexer) Close() {
 
 func (ix *Indexer) indexAll(ctx context.Context, blockNumber uint64) {
 	var wg sync.WaitGroup
-	for _, sc := range ix.scanners {
+	for _, w := range ix.workers {
 		wg.Add(1)
-		go func(sc Scanner) {
-			log.Printf("[Indexer:%s] Start indexing", sc.EventName())
+		go func(w *Worker) {
 			defer wg.Done()
-
-			lastBlockNumber, err := ix.stateStorage.GetLastBlockNumber(sc.EventName())
-			if err != nil {
-				log.Printf("[Indexer:%s] Failed to get last block number %v", sc.EventName(), err)
-				return
-			}
-			if blockNumber <= ix.confirmedAfter {
-				return
-			}
-			fromBlockNumber := lastBlockNumber + 1
-			toBlockNumber := blockNumber - ix.confirmedAfter
-
-			records, err := sc.Scan(ctx, fromBlockNumber, toBlockNumber)
-			if err != nil {
-				log.Printf("[Indexer:%s] Failed to scan blocks %v", sc.EventName(), err)
-				return
-			}
-			if len(records) == 0 {
-				log.Printf("[Indexer:%s] No new blocks to scan in range %d-%d", sc.EventName(), fromBlockNumber, toBlockNumber)
-				return
-			}
-
-			err = ix.eventRecordsStorage.SaveAll(ctx, sc.EventName(), records)
-			if err != nil {
-				log.Printf("[Indexer:%s] Failed to save records : %v", sc.EventName(), err)
-				return
-			}
-
-			lastBlockNumber = records[len(records)-1].BlockNumber
-			err = ix.stateStorage.SetLastBlockNumber(sc.EventName(), lastBlockNumber)
-			if err != nil {
-				log.Printf("[Indexer:%s] Failed to save last block number: %v", sc.EventName(), err)
-				return
-			}
-			log.Printf("[Indexer:%s] Successfully indexed blocks in range %d-%d", sc.EventName(), fromBlockNumber, lastBlockNumber)
-		}(sc)
+			w.IndexBlocks(ctx, blockNumber, ix.confirmedAfter)
+		}(w)
 	}
 	wg.Wait()
 }

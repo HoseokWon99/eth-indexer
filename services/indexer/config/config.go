@@ -11,11 +11,16 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
+type WorkerConfig struct {
+	Name              string
+	ABI               *abi.ABI
+	ContractAddresses []ethcommon.Address
+	EventNames        []string
+}
+
 type IndexerOptions struct {
 	RpcUrl            string
-	ContractAddresses []ethcommon.Address
-	ABI               *abi.ABI
-	EventNames        []string
+	Workers           []WorkerConfig
 	ConfirmedAfter    uint64
 	OffsetBlockNumber uint64
 	StatusFilePath    string
@@ -26,9 +31,11 @@ type ApiOptions struct {
 }
 
 type Options struct {
-	Indexer  *IndexerOptions
-	Postgres *config.PostgresOptions
-	API      *ApiOptions
+	Indexer     *IndexerOptions
+	Postgres    *config.PostgresOptions
+	Mongo       *config.MongoOptions
+	API         *ApiOptions
+	StorageType string // "postgres" (default) or "mongo"
 }
 
 // LoadOptions loads all service configuration from environment variables.
@@ -45,7 +52,14 @@ func LoadOptions() (*Options, error) {
 	if err != nil {
 		return nil, fmt.Errorf("api indexer: %w", err)
 	}
-	return &Options{Indexer: ixOpts, Postgres: pgOpts, API: apiOpts}, nil
+	storageType := config.GetEnv("STORAGE_TYPE", "postgres")
+	return &Options{
+		Indexer:     ixOpts,
+		Postgres:    pgOpts,
+		Mongo:       config.LoadMongoFromEnv(),
+		API:         apiOpts,
+		StorageType: storageType,
+	}, nil
 }
 
 func loadApiOptions() (*ApiOptions, error) {
@@ -59,26 +73,16 @@ func loadApiOptions() (*ApiOptions, error) {
 
 // loadIndexerFromEnv reads all IndexerOptions fields from environment variables.
 //
-// Required vars: RPC_URL, CONTRACT_ADDRESSES, ABI_PATH, EVENT_NAMES.
-// Optional vars: CONFIRMED_AFTER (default 12), OFFSET_BLOCK_NUMBER (default 0),
-// STATUS_FILE_PATH (default /var/lib/eth-indexer/state/indexer-state.json).
+// Required vars: ETHEREUM_RPC_URL, INDEXER_WORKER_0_ABI_PATH, INDEXER_WORKER_0_CONTRACT_ADDRESSES, INDEXER_WORKER_0_EVENT_NAMES.
+// Optional vars: INDEXER_CONFIRMED_AFTER (default 12), INDEXER_OFFSET_BLOCK_NUMBER (default 0),
+// INDEXER_STATUS_FILE_PATH (default /var/lib/eth-indexer/state/indexer-state.json).
 func loadIndexerFromEnv() (*IndexerOptions, error) {
 	rpcURL := os.Getenv("ETHEREUM_RPC_URL")
 	if rpcURL == "" {
 		return nil, fmt.Errorf("ETHEREUM_RPC_URL is required")
 	}
 
-	contractAddresses, err := loadContractAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	parsedABI, err := loadABIFromFile()
-	if err != nil {
-		return nil, err
-	}
-
-	eventNames, err := loadEventNames()
+	workers, err := loadWorkerConfigs()
 	if err != nil {
 		return nil, err
 	}
@@ -97,20 +101,76 @@ func loadIndexerFromEnv() (*IndexerOptions, error) {
 
 	return &IndexerOptions{
 		RpcUrl:            rpcURL,
-		ContractAddresses: contractAddresses,
-		ABI:               parsedABI,
-		EventNames:        eventNames,
+		Workers:           workers,
 		ConfirmedAfter:    confirmedAfter,
 		OffsetBlockNumber: offsetBlockNumber,
 		StatusFilePath:    statusFilePath,
 	}, nil
 }
 
-// loadContractAddresses parses CONTRACT_ADDRESSES as a comma-separated list of hex addresses.
-func loadContractAddresses() ([]ethcommon.Address, error) {
-	raw := os.Getenv("INDEXER_CONTRACT_ADDRESSES")
+// loadWorkerConfigs scans numbered env vars INDEXER_WORKER_N_* until ABI_PATH is missing.
+func loadWorkerConfigs() ([]WorkerConfig, error) {
+	var workers []WorkerConfig
+	for i := 0; ; i++ {
+		prefix := fmt.Sprintf("INDEXER_WORKER_%d_", i)
+		abiPath := os.Getenv(prefix + "ABI_PATH")
+		if abiPath == "" {
+			break
+		}
+
+		parsedABI, err := loadABIFromPath(abiPath)
+		if err != nil {
+			return nil, fmt.Errorf("worker %d: %w", i, err)
+		}
+
+		addresses, err := loadContractAddressesFromEnv(prefix + "CONTRACT_ADDRESSES")
+		if err != nil {
+			return nil, fmt.Errorf("worker %d: %w", i, err)
+		}
+
+		eventNames, err := loadEventNamesFromEnv(prefix + "EVENT_NAMES")
+		if err != nil {
+			return nil, fmt.Errorf("worker %d: %w", i, err)
+		}
+
+		name := os.Getenv(prefix + "NAME")
+		if name == "" {
+			name = fmt.Sprintf("worker-%d", i)
+		}
+
+		workers = append(workers, WorkerConfig{
+			Name:              name,
+			ABI:               parsedABI,
+			ContractAddresses: addresses,
+			EventNames:        eventNames,
+		})
+	}
+	if len(workers) == 0 {
+		return nil, fmt.Errorf("no workers configured: set INDEXER_WORKER_0_ABI_PATH at minimum")
+	}
+	return workers, nil
+}
+
+// loadABIFromPath reads and parses the JSON ABI file at the given path.
+func loadABIFromPath(path string) (*abi.ABI, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open ABI file %q: %w", path, err)
+	}
+	defer f.Close()
+
+	parsedABI, err := abi.JSON(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI file %q: %w", path, err)
+	}
+	return &parsedABI, nil
+}
+
+// loadContractAddressesFromEnv parses a comma-separated list of hex addresses from the given env var.
+func loadContractAddressesFromEnv(envVar string) ([]ethcommon.Address, error) {
+	raw := os.Getenv(envVar)
 	if raw == "" {
-		return nil, fmt.Errorf("INDEXER_CONTRACT_ADDRESSES is required")
+		return nil, fmt.Errorf("%s is required", envVar)
 	}
 	parts := strings.Split(raw, ",")
 	addresses := make([]ethcommon.Address, 0, len(parts))
@@ -120,40 +180,21 @@ func loadContractAddresses() ([]ethcommon.Address, error) {
 			continue
 		}
 		if !ethcommon.IsHexAddress(p) {
-			return nil, fmt.Errorf("invalid contract address %q in CONTRACT_ADDRESSES", p)
+			return nil, fmt.Errorf("invalid contract address %q in %s", p, envVar)
 		}
 		addresses = append(addresses, ethcommon.HexToAddress(p))
 	}
 	if len(addresses) == 0 {
-		return nil, fmt.Errorf("CONTRACT_ADDRESSES must contain at least one address")
+		return nil, fmt.Errorf("%s must contain at least one address", envVar)
 	}
 	return addresses, nil
 }
 
-// loadABIFromFile reads ABI_PATH from the environment and parses the JSON ABI file at that path.
-func loadABIFromFile() (*abi.ABI, error) {
-	abiPath := os.Getenv("INDEXER_ABI_PATH")
-	if abiPath == "" {
-		return nil, fmt.Errorf("INDEXER_ABI_PATH is required")
-	}
-	f, err := os.Open(abiPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open ABI file %q: %w", abiPath, err)
-	}
-	defer f.Close()
-
-	parsedABI, err := abi.JSON(f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI file %q: %w", abiPath, err)
-	}
-	return &parsedABI, nil
-}
-
-// loadEventNames parses EVENT_NAMES as a comma-separated list of event names.
-func loadEventNames() ([]string, error) {
-	raw := os.Getenv("INDEXER_EVENT_NAMES")
+// loadEventNamesFromEnv parses a comma-separated list of event names from the given env var.
+func loadEventNamesFromEnv(envVar string) ([]string, error) {
+	raw := os.Getenv(envVar)
 	if raw == "" {
-		return nil, fmt.Errorf("INDEXER_EVENT_NAMES is required")
+		return nil, fmt.Errorf("%s is required", envVar)
 	}
 	parts := strings.Split(raw, ",")
 	names := make([]string, 0, len(parts))
@@ -164,7 +205,7 @@ func loadEventNames() ([]string, error) {
 		}
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("EVENT_NAMES must contain at least one event name")
+		return nil, fmt.Errorf("%s must contain at least one event name", envVar)
 	}
 	return names, nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	libsconfig "eth-indexer.dev/libs/config"
@@ -21,20 +22,40 @@ func main() {
 		panic(err)
 	}
 
-	pgPool, err := libsconfig.CreatePgConnPool(options.Postgres)
-	if err != nil {
-		panic(err)
+	var eventRecordsStorage core.EventRecordsStorage
+	switch options.StorageType {
+	case "mongo":
+		mongoClient, err := libsconfig.CreateMongoClient(options.Mongo)
+		if err != nil {
+			panic(err)
+		}
+		col := mongoClient.Database(options.Mongo.Database).Collection("event_records")
+		if err := storage.EnsureIndexes(col); err != nil {
+			panic(err)
+		}
+		eventRecordsStorage = storage.NewMongoEventRecordsStorage(col)
+		log.Println("Using MongoDB storage")
+	default:
+		pgPool, err := libsconfig.CreatePgConnPool(options.Postgres)
+		if err != nil {
+			panic(err)
+		}
+		if err := storage.Migrate(pgPool); err != nil {
+			panic(err)
+		}
+		eventRecordsStorage = storage.NewPostgresEventRecordsStorage(pgPool)
+		log.Println("Using PostgreSQL storage")
 	}
 
-	if err := storage.Migrate(pgPool); err != nil {
-		panic(err)
+	allStateKeys := []string{}
+	for _, wc := range options.Indexer.Workers {
+		for _, en := range wc.EventNames {
+			allStateKeys = append(allStateKeys, fmt.Sprintf("%s:%s", wc.Name, en))
+		}
 	}
-
-	eventRecordsStorage := storage.NewPostgresEventRecordsStorage(pgPool)
-
 	stateStorage, err := storage.NewSimpleStateStorage(
 		options.Indexer.StatusFilePath,
-		options.Indexer.EventNames,
+		allStateKeys,
 		options.Indexer.OffsetBlockNumber,
 	)
 	if err != nil {
@@ -45,23 +66,23 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	scanners := make([]core.Scanner, 0, len(options.Indexer.EventNames))
-	for _, en := range options.Indexer.EventNames {
-		scn, err := scanner.NewEventRecordsScanner(
-			eth,
-			options.Indexer.ABI,
-			en,
-			options.Indexer.ContractAddresses,
-		)
-		if err != nil {
-			log.Fatalf("Failed to create scanner for event '%s': %v", en, err)
+
+	workers := make([]*core.Worker, 0, len(options.Indexer.Workers))
+	for _, wc := range options.Indexer.Workers {
+		scanners := make([]core.Scanner, 0, len(wc.EventNames))
+		for _, en := range wc.EventNames {
+			scn, err := scanner.NewEventRecordsScanner(eth, wc.ABI, en, wc.ContractAddresses)
+			if err != nil {
+				log.Fatalf("Failed to create scanner for worker %q event %q: %v", wc.Name, en, err)
+			}
+			scanners = append(scanners, scn)
 		}
-		scanners = append(scanners, scn)
+		workers = append(workers, core.NewWorker(wc.Name, scanners, eventRecordsStorage, stateStorage))
 	}
 
 	indexer := core.NewIndexer(
 		eth,
-		scanners,
+		workers,
 		eventRecordsStorage,
 		stateStorage,
 		options.Indexer.ConfirmedAfter,

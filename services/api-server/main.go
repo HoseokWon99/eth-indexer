@@ -7,6 +7,7 @@ import (
 	libsconfig "eth-indexer.dev/libs/config"
 	"eth-indexer.dev/services/api-server/api"
 	"eth-indexer.dev/services/api-server/config"
+	"eth-indexer.dev/services/api-server/core"
 	"eth-indexer.dev/services/api-server/storage"
 )
 
@@ -16,11 +17,24 @@ func main() {
 		log.Fatalf("Configuration error: %v", err)
 	}
 
-	pgPool, err := libsconfig.CreatePgConnPool(options.Postgres)
-	if err != nil {
-		log.Fatalf("Failed to create Postgres connection pool: %v", err)
+	var eventRecordsStorage core.EventRecordsStorage
+	switch options.StorageType {
+	case "mongo":
+		mongoClient, err := libsconfig.CreateMongoClient(options.Mongo)
+		if err != nil {
+			log.Fatalf("Failed to create MongoDB client: %v", err)
+		}
+		col := mongoClient.Database(options.Mongo.Database).Collection("event_records")
+		eventRecordsStorage = storage.NewMongoEventRecordsStorage(col)
+		log.Println("Using MongoDB storage")
+	default:
+		pgPool, err := libsconfig.CreatePgConnPool(options.Postgres)
+		if err != nil {
+			log.Fatalf("Failed to create Postgres connection pool: %v", err)
+		}
+		eventRecordsStorage = storage.NewPostgresEventRecordsStorage(pgPool)
+		log.Println("Using PostgreSQL storage")
 	}
-	eventRecordsStorage := storage.NewPostgresEventRecordsStorage(pgPool)
 
 	rc, err := config.CreateRedisClient(options.Redis)
 	if err != nil {
