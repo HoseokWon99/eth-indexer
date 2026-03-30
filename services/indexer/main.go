@@ -83,7 +83,6 @@ func main() {
 	indexer := core.NewIndexer(
 		eth,
 		workers,
-		eventRecordsStorage,
 		stateStorage,
 		options.Indexer.ConfirmedAfter,
 	)
