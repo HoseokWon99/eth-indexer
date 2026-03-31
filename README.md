@@ -295,6 +295,68 @@ flowchart LR
 - **Cache**: Redis/Valkey with deterministic key from query parameters, configurable TTL
 - **State**: JSON file tracking last indexed block per worker; enables safe resumption after restarts
 
+## Cache Structure
+
+The API server uses a **cache-aside** pattern backed by Redis/Valkey.
+
+### Key Format
+
+```
+eth-indexer:cache:{topic}?{raw_query_string}
+```
+
+Example:
+```
+eth-indexer:cache:Transfer?contract_address=0xA0b8...&block_number={"gte":100}
+```
+
+### Value Structure
+
+The full `SearchResponse` is cached as a JSON string:
+
+```json
+{
+  "count": 42,
+  "result": [ { ...EventRecord }, { ...EventRecord } ],
+  "next_cursor": "..."
+}
+```
+
+### Redis Storage Structure
+
+```mermaid
+graph TD
+    REDIS[("Redis / Valkey\nDB 0")]
+
+    NS["prefix: eth-indexer:cache:"]
+
+    subgraph KEY_FORMAT["key = prefix + topic + '?' + raw_query_string"]
+        K1["eth-indexer:cache:Transfer?contract_address=0xA0b8..."]
+        K2["eth-indexer:cache:Transfer?block_number=gte:100,lte:200"]
+        K3["eth-indexer:cache:Transfer?contract_address=0xA0b8...&log_index=0"]
+        KN["eth-indexer:cache:Approval?..."]
+    end
+
+    V1["STRING  TTL: 60s\n{count:N, result:[...], next_cursor:'...'}"]
+    V2["STRING  TTL: 60s\n{count:N, result:[...], next_cursor:'...'}"]
+    V3["STRING  TTL: 60s\n{count:N, result:[...], next_cursor:'...'}"]
+    VN["STRING  TTL: 60s\n{count:N, result:[...], next_cursor:'...'}"]
+
+    REDIS --> NS --> KEY_FORMAT
+    K1 --> V1
+    K2 --> V2
+    K3 --> V3
+    KN --> VN
+```
+
+### Cache Key Properties
+
+- **Scope**: per topic + per exact query string combination
+- **Serialization**: JSON
+- **TTL**: configurable via `API_TTL` env var (default: 60s)
+- **On Redis failure (GET)**: request fails with 500
+- **On Redis failure (SET)**: warning logged, fresh response still returned
+
 ## Database Schema
 
 Records are grouped by event topic in MongoDB. Each document holds all records for one event type:
